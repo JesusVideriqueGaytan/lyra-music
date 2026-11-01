@@ -117,3 +117,20 @@ app.*.symbols
 !**/ios/**/default.perspectivev3
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
 !/dev/ci/**/Gemfile.lock
+# Archivos locales de Flutter
+.dart_tool/
+build/
+.idea/
+**/ephemeral/
+.flutter-plugins*
+**/local.properties
+**/key.properties
+*.jks
+*.keystore
+.env
+
+# Configuracion local del IDE
+*.iml
+
+# Versiones de dependencias de la app
+!/pubspec.lock
