@@ -29,7 +29,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: <RouteBase>[
       ShellRoute(
         builder: (context, state, child) => _MiniPlayerScaffold(
-          showMiniPlayer: state.uri.path != '/player', child: child),
+          showMiniPlayer: state.uri.path != '/player',
+          child: child,
+        ),
         routes: <RouteBase>[
           GoRoute(path: '/', redirect: (context, state) => '/library'),
           GoRoute(
@@ -95,7 +97,10 @@ final routerProvider = Provider<GoRouter>((ref) {
 /// contenido de la ruta activa. En la propia pantalla /player se omite para
 /// no duplicar controles.
 class _MiniPlayerScaffold extends StatelessWidget {
-  const _MiniPlayerScaffold({required this.child, required this.showMiniPlayer});
+  const _MiniPlayerScaffold({
+    required this.child,
+    required this.showMiniPlayer,
+  });
 
   final bool showMiniPlayer;
 
@@ -103,7 +108,6 @@ class _MiniPlayerScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     return Stack(
       children: <Widget>[
         if (child != null) child!,

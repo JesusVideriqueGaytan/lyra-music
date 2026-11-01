@@ -40,7 +40,10 @@ class PerformanceSettingsScreen extends ConsumerWidget {
           const SizedBox(height: 16),
 
           // --- Selector de modo --------------------------------------------
-          Text('Modo de selección', style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Modo de selección',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -160,9 +163,7 @@ class _StatusCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  state.isLoading
-                      ? Icons.hourglass_top
-                      : Icons.speed,
+                  state.isLoading ? Icons.hourglass_top : Icons.speed,
                   color: scheme.primary,
                 ),
                 const SizedBox(width: 8),
@@ -237,14 +238,23 @@ class _FeaturesTable extends StatelessWidget {
       ('Blur / BackdropFilter', features.canUseBlur ? 'Sí' : 'No'),
       ('Visualizador de audio', features.canUseVisualizer ? 'Sí' : 'No'),
       ('Letras sincronizadas', _lyricsLabel(features.lyricsMode)),
-      ('Ecualizador', features.equalizerBands == 0
-          ? 'Desactivado'
-          : '${features.equalizerBands} bandas'),
-      ('Streaming', '${features.streamingBitrateKbps} kbps'
-          '${features.canUseLossless ? ' + FLAC' : ''}'),
-      ('Caché máxima', features.cacheLimitMb.isInfinite
-          ? 'Ilimitada'
-          : '${features.cacheLimitMb.toInt()} MB'),
+      (
+        'Ecualizador',
+        features.equalizerBands == 0
+            ? 'Desactivado'
+            : '${features.equalizerBands} bandas',
+      ),
+      (
+        'Streaming',
+        '${features.streamingBitrateKbps} kbps'
+            '${features.canUseLossless ? ' + FLAC' : ''}',
+      ),
+      (
+        'Caché máxima',
+        features.cacheLimitMb.isInfinite
+            ? 'Ilimitada'
+            : '${features.cacheLimitMb.toInt()} MB',
+      ),
       ('Precarga', '${features.preloadSongs} canciones'),
       ('Transiciones', _transitionLabel(features.transitionStyle)),
       ('Calidad de imágenes', '${features.maxImageSizePx} px'),

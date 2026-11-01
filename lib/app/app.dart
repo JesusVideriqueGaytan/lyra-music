@@ -26,11 +26,12 @@ class LyraApp extends ConsumerWidget {
         // El esquema dinámico "real" lo decide adaptive_theme según variante.
         final dynamicScheme =
             (WidgetsBinding.instance.platformDispatcher.platformBrightness ==
-                    Brightness.dark)
-                ? darkDynamic
-                : lightDynamic;
+                Brightness.dark)
+            ? darkDynamic
+            : lightDynamic;
 
-        final lightTheme = themeState.variant == AppThemeVariant.dynamic &&
+        final lightTheme =
+            themeState.variant == AppThemeVariant.dynamic &&
                 lightDynamic != null
             ? AdaptiveTheme.fromScheme(lightDynamic)
             : AdaptiveTheme.build(
@@ -39,8 +40,8 @@ class LyraApp extends ConsumerWidget {
                 dynamicScheme: dynamicScheme,
               );
 
-        final darkTheme = themeState.variant == AppThemeVariant.dynamic &&
-                darkDynamic != null
+        final darkTheme =
+            themeState.variant == AppThemeVariant.dynamic && darkDynamic != null
             ? AdaptiveTheme.fromScheme(darkDynamic)
             : AdaptiveTheme.build(
                 AppThemeVariant.dark,

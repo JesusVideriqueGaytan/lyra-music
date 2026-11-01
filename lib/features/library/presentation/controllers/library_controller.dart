@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async' show unawaited;
+import 'dart:io' show Directory, FileSystemException;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -143,7 +144,8 @@ class LibraryController extends Notifier<LibraryState> {
   LibraryState build() {
     // Al construir, cargamos las carpetas guardadas y lanzamos un escaneo
     // automático si el usuario ya había autorizado alguna sesión previa.
-    unawaited(_loadSavedFoldersAndScan());
+    _readyFuture = _initialize();
+    unawaited(_readyFuture!);
     return const LibraryState();
   }
 
@@ -183,27 +185,48 @@ class LibraryController extends Notifier<LibraryState> {
 
   /// Añade una carpeta y escanea solo su contenido (se fusiona con lo existente).
   Future<void> addFolder(String path) async {
+    if (state.isScanning) return;
+    state = state.copyWith(isScanning: true, clearError: true);
     try {
-      await _repository.saveFolder(path);
-      state = state.copyWith(
-        folders: <String>{...state.folders, path}.toList(),
-      );
-      final result = await _repository.scanFolder(path);
+      final directory = Directory(path);
+      if (!await directory.exists()) {
+        throw FileSystemException(
+          'La carpeta no existe o no es accesible',
+          path,
+        );
+      }
+      // Comprobar acceso antes de guardar; conservar la selección exacta.
+      await directory.list(followLinks: false).take(1).drain<void>();
+      final selectedPath = directory.absolute.path;
+      final result = await _repository.scanFolder(selectedPath);
+      if (result.tracks.isEmpty && result.errors.isNotEmpty) {
+        state = state.copyWith(isScanning: false, error: result.errors.first);
+        return;
+      }
+      await _repository.saveFolder(selectedPath);
       final merged = <String, Track>{
         for (final t in state.tracks) t.id: t,
         for (final t in result.tracks) t.id: t,
       };
       state = state.copyWith(
+        folders: <String>{...state.folders, selectedPath}.toList(),
         tracks: merged.values.toList()
           ..sort(
             (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
           ),
+        isScanning: false,
+        clearFolderFilter: true,
+        error: result.errors.isNotEmpty
+            ? result.errors.first
+            : result.tracks.isEmpty
+            ? 'La carpeta se guardó, pero no contiene archivos de audio compatibles.'
+            : null,
       );
-      if (result.errors.isNotEmpty) {
-        state = state.copyWith(error: result.errors.first);
-      }
     } catch (e) {
-      state = state.copyWith(error: 'No se pudo añadir la carpeta: $e');
+      state = state.copyWith(
+        isScanning: false,
+        error: 'No se pudo añadir la carpeta: $e',
+      );
     }
   }
 

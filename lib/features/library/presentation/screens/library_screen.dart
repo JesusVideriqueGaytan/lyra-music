@@ -6,6 +6,9 @@
 /// (todas las pistas visibles) comenzando en la seleccionada.
 library;
 
+import 'dart:io' show Platform;
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -364,6 +367,30 @@ class _EmptyState extends StatelessWidget {
 /// un selector nativo con permission_handler en Fase 2.x. Validamos que la
 /// carpeta exista antes de añadirla al repositorio.
 Future<void> _showAddFolderSheet(BuildContext context, WidgetRef ref) async {
+  // En escritorio se usa la ruta devuelta por el selector del sistema.
+  if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+    final notifier = ref.read(libraryControllerProvider.notifier);
+    if (ref.read(libraryControllerProvider).isScanning) return;
+    try {
+      final path = await getDirectoryPath(
+        confirmButtonText: 'Seleccionar carpeta',
+      );
+      if (path == null || !context.mounted) return;
+      await notifier.waitUntilReady();
+      await notifier.addFolder(path);
+      if (!context.mounted) return;
+      final result = ref.read(libraryControllerProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error ?? 'Carpeta añadida: $path')),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo abrir la carpeta: $error')),
+      );
+    }
+    return;
+  }
   final controller = TextEditingController();
   final repository = ref.read(audioRepositoryProvider);
   // Pre-sugerimos las carpetas candidatas del sistema (Music, Home…).

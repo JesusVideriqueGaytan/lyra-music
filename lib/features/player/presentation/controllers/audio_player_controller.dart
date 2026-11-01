@@ -33,7 +33,8 @@ import 'package:just_audio/just_audio.dart';
 
 import 'package:lyra_music/core/performance/performance_controller.dart'
     show currentTierProvider;
-import 'package:lyra_music/core/performance/performance_tier.dart' show PerformanceTier;
+import 'package:lyra_music/core/performance/performance_tier.dart'
+    show PerformanceTier;
 import 'package:lyra_music/features/player/domain/models/track.dart';
 
 /// Alias explícito: el PlaybackState de audio_service colisiona con el nuestro.
@@ -331,7 +332,17 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       // ConcatenatingAudioSource manual (deprecado). El manejo del orden y
       // la precarga queda en manos del plugin.
       final sources = tracks
-          .map((t) => AudioSource.file(t.filePath, tag: MediaItem(id: t.id, title: t.title, artist: t.artist, album: t.album)))
+          .map(
+            (t) => AudioSource.file(
+              t.filePath,
+              tag: MediaItem(
+                id: t.id,
+                title: t.title,
+                artist: t.artist,
+                album: t.album,
+              ),
+            ),
+          )
           .toList();
       await _player.setAudioSources(
         sources,
@@ -344,9 +355,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       // Otra carga más reciente ganó la carrera: NO es un error real, se
       // ignora silenciosamente (comportamiento documentado por el plugin).
     } on PlayerException catch (e) {
-      state = state.copyWith(
-        error: _humanizePlayerError(e, tracks[safeIndex]),
-      );
+      state = state.copyWith(error: _humanizePlayerError(e, tracks[safeIndex]));
     } on FileSystemException catch (e) {
       state = state.copyWith(
         error: 'Archivo no encontrado: ${e.path ?? tracks[safeIndex].filePath}',
@@ -565,7 +574,17 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     final resumePosition = state.position;
     try {
       final sources = reordered
-          .map((t) => AudioSource.file(t.filePath, tag: MediaItem(id: t.id, title: t.title, artist: t.artist, album: t.album)))
+          .map(
+            (t) => AudioSource.file(
+              t.filePath,
+              tag: MediaItem(
+                id: t.id,
+                title: t.title,
+                artist: t.artist,
+                album: t.album,
+              ),
+            ),
+          )
           .toList();
       // setAudioSources (0.10.x): reemplaza a ConcatenatingAudioSource.
       await _player.setAudioSources(
@@ -607,7 +626,17 @@ class AudioPlayerController extends Notifier<PlaybackState> {
 
     try {
       final sources = remaining
-          .map((t) => AudioSource.file(t.filePath, tag: MediaItem(id: t.id, title: t.title, artist: t.artist, album: t.album)))
+          .map(
+            (t) => AudioSource.file(
+              t.filePath,
+              tag: MediaItem(
+                id: t.id,
+                title: t.title,
+                artist: t.artist,
+                album: t.album,
+              ),
+            ),
+          )
           .toList();
       // setAudioSources (0.10.x): reemplaza a ConcatenatingAudioSource.
       await _player.setAudioSources(

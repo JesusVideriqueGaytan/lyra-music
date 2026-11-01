@@ -89,8 +89,7 @@ class AdaptiveFeatures {
   final bool forceMaxRefreshRate;
 
   /// Duración tipográfica segura para usar en AnimationController/Duration.
-  Duration get animationDuration =>
-      Duration(milliseconds: animationDurationMs);
+  Duration get animationDuration => Duration(milliseconds: animationDurationMs);
 
   /// Copia con overrides parciales (base del modo "custom").
   AdaptiveFeatures copyWith({

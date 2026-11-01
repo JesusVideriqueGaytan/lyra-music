@@ -29,18 +29,12 @@ Future<void> main() async {
     await container
         .read(performanceControllerProvider.notifier)
         .waitUntilReady()
-        .timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {},
-        );
+        .timeout(const Duration(seconds: 5), onTimeout: () {});
   } catch (_) {
     // Silencioso a propósito: la app debe arrancar aunque la detección falle.
   }
 
   runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const LyraApp(),
-    ),
+    UncontrolledProviderScope(container: container, child: const LyraApp()),
   );
 }

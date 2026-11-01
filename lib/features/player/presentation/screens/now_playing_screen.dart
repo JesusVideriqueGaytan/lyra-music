@@ -93,15 +93,15 @@ class NowPlayingScreen extends ConsumerWidget {
       // mientras exista (el controller lo limpia al reproducir otra pista).
       bottomNavigationBar: error != null
           ? MaterialBanner(
-                content: Text(error),
-                backgroundColor: scheme.errorContainer,
-                actions: <Widget>[
-                  TextButton(
-                    onPressed: () => context.go('/library'),
-                    child: const Text('Buscar otra canción'),
-                  ),
-                ],
-              )
+              content: Text(error),
+              backgroundColor: scheme.errorContainer,
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => context.go('/library'),
+                  child: const Text('Buscar otra canción'),
+                ),
+              ],
+            )
           : null,
       body: Stack(
         fit: StackFit.expand,

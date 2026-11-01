@@ -16,11 +16,12 @@ import 'package:lyra_music/core/performance/performance_controller.dart';
 import 'package:lyra_music/core/performance/performance_tier.dart';
 
 /// Builder que recibe el tier y las características activas.
-typedef AdaptiveWidgetBuilder = Widget Function(
-  BuildContext context,
-  PerformanceTier tier,
-  AdaptiveFeatures features,
-);
+typedef AdaptiveWidgetBuilder =
+    Widget Function(
+      BuildContext context,
+      PerformanceTier tier,
+      AdaptiveFeatures features,
+    );
 
 /// Wrapper genérico que elige entre dos representaciones según el tier.
 ///
@@ -43,9 +44,9 @@ class AdaptiveWidget extends ConsumerWidget {
     this.builder,
     this.tierOverride,
   }) : assert(
-          low != null || builder != null,
-          'AdaptiveWidget requiere al menos un builder (low o builder).',
-        );
+         low != null || builder != null,
+         'AdaptiveWidget requiere al menos un builder (low o builder).',
+       );
 
   /// Versión degradada máxima (tier low, o fallback de todos los tiers).
   final AdaptiveWidgetBuilder? low;
