@@ -25,13 +25,15 @@ class MyMusicScreen extends ConsumerWidget {
     final content = ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
-        const LyraSectionBanner(
-          icon: Icons.library_music_rounded,
-          eyebrow: 'TU BIBLIOTECA',
-          title: 'Tu colección',
-          subtitle: 'Favoritos, playlists, artistas e historial privados.',
-        ),
-        const SizedBox(height: 22),
+        if (!embedded) ...[
+          const LyraSectionBanner(
+            icon: Icons.library_music_rounded,
+            eyebrow: 'TU BIBLIOTECA',
+            title: 'Tu colección',
+            subtitle: 'Favoritos, playlists, artistas e historial privados.',
+          ),
+          const SizedBox(height: 22),
+        ],
         Card(
           clipBehavior: Clip.antiAlias,
           child: ExpansionTile(

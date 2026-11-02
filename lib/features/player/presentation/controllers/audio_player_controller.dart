@@ -774,6 +774,45 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   // Gestión de cola editable (reordenar básico, quitar pista)
   // ---------------------------------------------------------------------------
 
+  /// Encola una canción inmediatamente después de la actual.
+  /// No interrumpe la reproducción activa ni resuelve el flujo por adelantado.
+  Future<void> playNext(Track track) async {
+    if (state.queue.isEmpty || state.currentIndex < 0) {
+      await playQueue([track]);
+      return;
+    }
+    final insertIndex = state.currentIndex + 1;
+    // En colas locales el motor administra la secuencia real; insertar allí
+    // primero evita una divergencia entre la cola visible y just_audio.
+    if (!_singleSourceQueue) {
+      if (track.id.startsWith('ytmusic:')) {
+        // Cambiar a una cola híbrida requeriría reconstruir el motor mientras
+        // suena la pista. En lugar de cortar el audio, no prometer el encolado.
+        state = state.copyWith(
+          error:
+              'No se puede insertar una fuente online en esta cola local todavía.',
+        );
+        return;
+      }
+      try {
+        await _player.insertAudioSource(insertIndex, _audioSourceFor(track));
+      } catch (_) {
+        state = state.copyWith(
+          error: 'No se pudo agregar la canción a la cola.',
+        );
+        return;
+      }
+    }
+    final updated = <Track>[...state.queue]..insert(insertIndex, track);
+    ++_radioRequestGeneration; // evita que una radio pendiente sobreescriba la cola
+    state = state.copyWith(
+      queue: List<Track>.unmodifiable(updated),
+      autoRadio: false,
+      clearError: true,
+    );
+    _publishQueue(updated, state.currentIndex);
+  }
+
   /// Mueve una pista dentro de la cola (sin drag & drop complejo: botones
   /// subir/bajar en la pantalla de cola).
   Future<void> moveInQueue(int oldIndex, int newIndex) async {

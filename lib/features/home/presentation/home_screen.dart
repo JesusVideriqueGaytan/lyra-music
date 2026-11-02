@@ -37,18 +37,6 @@ class HomeScreen extends ConsumerWidget {
           'Inicio',
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Buscar música',
-            onPressed: () => context.go('/explore'),
-            icon: const Icon(Icons.search_rounded),
-          ),
-          IconButton(
-            tooltip: 'Cuentas y servicios',
-            onPressed: () => context.go('/accounts'),
-            icon: const Icon(Icons.account_circle_outlined),
-          ),
-        ],
       ),
       body: Center(
         child: ConstrainedBox(
@@ -155,7 +143,7 @@ class HomeScreen extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     subtitle: Text(
-                      current.artist,
+                      current.displayArtist,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),

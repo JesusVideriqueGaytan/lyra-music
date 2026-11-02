@@ -1,0 +1,26 @@
+LYRA 4.1.1 - Hotfix de compilación Linux
+
+Error resuelto:
+  No named parameter with the name 'tooltip'
+  lib/features/player/presentation/screens/now_playing_screen.dart
+
+Adicionalmente:
+  - Eliminado import sin usar de my_music_screen en router.dart.
+  - Eliminado '!' innecesario del artista analizado por YouTube Music.
+
+MÉTODO RECOMENDADO: NO SOBRESCRIBIR ARCHIVOS
+1. Copia SOLO aplicar_hotfix.sh a la raíz de ~/Lyra-GitHub.
+2. En la terminal, desde ~/Lyra-GitHub, ejecuta:
+   bash aplicar_hotfix.sh
+   dart format lib test
+   dart fix --apply --code=curly_braces_in_flow_control_structures
+   flutter analyze
+   flutter test
+   flutter run -d linux
+
+Alternativa: extrae solo los 3 archivos Dart modificados de este ZIP sobre
+la raíz del proyecto. Ojo: sobrescribirlos reemplazará cambios que hayas
+realizado a esos archivos después de la versión 4.1.
+
+No se han cambiado dependencias ni el motor de reproducción.
+No se ha compilado con Flutter en este entorno.

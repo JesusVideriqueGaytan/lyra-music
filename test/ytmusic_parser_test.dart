@@ -46,6 +46,46 @@ void main() {
     expect(result.single.thumbnail, 'https://example.org/cover.jpg');
   });
 
+  test('recupera duración cuando el catálogo la facilita', () {
+    final tracks = YtMusicClient.parseSongs({
+      'musicResponsiveListItemRenderer': {
+        'playlistItemData': {'videoId': 'abcdefghijk'},
+        'flexColumns': [
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': 'Canción de prueba'},
+                ],
+              },
+            },
+          },
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': 'Artista de prueba'},
+                ],
+              },
+            },
+          },
+        ],
+        'fixedColumns': [
+          {
+            'musicResponsiveListItemFixedColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': '3:45'},
+                ],
+              },
+            },
+          },
+        ],
+      },
+    });
+    expect(tracks.single.duration, const Duration(minutes: 3, seconds: 45));
+  });
+
   test('no confunde etiquetas de video con artistas', () {
     final songs = YtMusicClient.parseSongs({
       'musicResponsiveListItemRenderer': {
@@ -77,6 +117,69 @@ void main() {
       },
     });
     expect(songs.single.artist, 'Eve');
+  });
+
+  test('no confunde duración de una canción con el artista', () {
+    final songs = YtMusicClient.parseSongs({
+      'musicResponsiveListItemRenderer': {
+        'playlistItemData': {'videoId': 'aBcDeFgHiJ1'},
+        'flexColumns': [
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': 'Ghost Avenue'},
+                ],
+              },
+            },
+          },
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': '2:54'},
+                ],
+              },
+            },
+          },
+        ],
+        'longBylineText': {
+          'runs': [
+            {'text': 'Eve'},
+          ],
+        },
+      },
+    });
+    expect(songs.single.artist, 'Eve');
+  });
+
+  test('si solo existe la duración no inventa un artista', () {
+    final songs = YtMusicClient.parseSongs({
+      'musicResponsiveListItemRenderer': {
+        'playlistItemData': {'videoId': 'aBcDeFgHiJ2'},
+        'flexColumns': [
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': 'Ghost Avenue'},
+                ],
+              },
+            },
+          },
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': '2:54'},
+                ],
+              },
+            },
+          },
+        ],
+      },
+    });
+    expect(songs.single.artist, 'Artista desconocido');
   });
 
   test('recupera miniaturas anidadas y elige la más grande', () {

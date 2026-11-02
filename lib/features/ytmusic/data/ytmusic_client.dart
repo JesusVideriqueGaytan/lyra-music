@@ -16,6 +16,7 @@ class YtMusicSong {
     this.album = 'YouTube Music',
     this.thumbnail,
     this.artistId,
+    this.duration,
   });
   final String videoId;
   final String title;
@@ -23,6 +24,7 @@ class YtMusicSong {
   final String album;
   final String? thumbnail;
   final String? artistId;
+  final Duration? duration;
 }
 
 class YtMusicArtist {
@@ -316,6 +318,7 @@ class YtMusicClient {
                 ? fallbackArtist
                 : song.artist,
             artistId: song.artistId,
+            duration: song.duration,
             album: fallbackAlbum.isNotEmpty ? fallbackAlbum : song.album,
             thumbnail: fallbackArtwork ?? song.thumbnail,
           ),
@@ -541,6 +544,7 @@ class YtMusicClient {
   static bool _invalidArtist(String name) {
     final normalized = name.trim().toLowerCase();
     return normalized.isEmpty ||
+        RegExp(r'^\d{1,2}:\d{2}(?::\d{2})?$').hasMatch(normalized) ||
         const {
           'video',
           'vídeo',
@@ -555,6 +559,36 @@ class YtMusicClient {
         normalized.startsWith('vídeo •') ||
         normalized.startsWith('video •') ||
         normalized.startsWith('canción •');
+  }
+
+  /// Parse duration supplied by the catalog (mm:ss, hh:mm:ss or seconds).
+  /// Some response types omit it; in that case UI displays a dash.
+  static Duration? _readDuration(Map item) {
+    final seconds = int.tryParse(item['lengthSeconds']?.toString() ?? '');
+    if (seconds != null && seconds > 0) return Duration(seconds: seconds);
+    final fixed = item['fixedColumns'];
+    final labels = <String>[
+      _runs(item['lengthText']),
+      if (fixed is List)
+        for (final column in fixed)
+          if (column is Map)
+            _runs(
+              column['musicResponsiveListItemFixedColumnRenderer']?['text'],
+            ),
+    ];
+    for (final label in labels) {
+      final parts = label.trim().split(':');
+      if (parts.length < 2 ||
+          parts.length > 3 ||
+          parts.any((part) => int.tryParse(part) == null))
+        continue;
+      final values = parts.map(int.parse).toList();
+      if (values.last >= 60 || (values.length == 3 && values[1] >= 60))
+        continue;
+      final total = values.fold<int>(0, (acc, value) => acc * 60 + value);
+      if (total > 0) return Duration(seconds: total);
+    }
+    return null;
   }
 
   static List<YtMusicSong> parseSongs(Map<String, dynamic> data) {
@@ -614,7 +648,15 @@ class YtMusicClient {
           }
         }
         final candidateParts = artist.split(RegExp(r'\s*•\s*'));
-        final inferredArtist = candidateParts
+        // Nunca interpretar una duración como nombre de artista. En algunos
+        // resultados la segunda columna contiene solo mm:ss. Si sucede,
+        // buscar el nombre en los campos de autor del elemento.
+        final alternativeByline = [
+          _runs(item['longBylineText']),
+          _runs(item['shortBylineText']),
+          _runs(item['subtitle']),
+        ].expand((text) => text.split(RegExp(r'\s*•\s*')));
+        final inferredArtist = [...candidateParts, ...alternativeByline]
             .where(
               (part) =>
                   !_invalidArtist(part) &&
@@ -636,8 +678,9 @@ class YtMusicClient {
           YtMusicSong(
             videoId: id,
             title: title,
-            artist: cleanedArtist!,
+            artist: cleanedArtist,
             artistId: artistId,
+            duration: _readDuration(item),
             thumbnail: _thumb(item),
           ),
         );

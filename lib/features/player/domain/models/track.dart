@@ -45,6 +45,17 @@ class Track {
   /// Artista conocido o "Artista desconocido".
   final String artist;
 
+  /// Etiqueta segura para pistas guardadas con metadatos incompletos.
+  /// En resultados antiguos una duración (p.ej. 2:54) quedó como artista.
+  String get displayArtist {
+    final value = artist.trim();
+    if (value.isEmpty ||
+        RegExp(r'^\d{1,2}:\d{2}(?::\d{2})?$').hasMatch(value)) {
+      return 'Artista desconocido';
+    }
+    return value;
+  }
+
   /// Álbum conocido o "Álbum desconocido".
   final String album;
 

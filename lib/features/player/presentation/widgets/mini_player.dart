@@ -94,7 +94,7 @@ class MiniPlayer extends ConsumerWidget {
                                   ?.copyWith(fontWeight: FontWeight.w600),
                             ),
                             Text(
-                              currentTrack.artist,
+                              currentTrack.displayArtist,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.bodySmall

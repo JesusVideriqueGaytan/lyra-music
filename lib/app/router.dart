@@ -24,7 +24,6 @@ import 'package:lyra_music/features/extensions/presentation/extensions_screen.da
 import 'package:lyra_music/features/online/presentation/online_screen.dart';
 import 'package:lyra_music/features/home/presentation/home_screen.dart';
 import 'package:lyra_music/features/accounts/presentation/accounts_screen.dart';
-import 'package:lyra_music/features/library/presentation/screens/my_music_screen.dart';
 import 'package:lyra_music/features/library/presentation/screens/listening_statistics_screen.dart';
 import 'package:lyra_music/features/ytmusic/presentation/artist_screen.dart';
 import 'package:lyra_music/features/player/domain/models/track.dart';

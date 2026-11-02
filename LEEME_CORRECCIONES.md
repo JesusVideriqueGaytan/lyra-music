@@ -11,7 +11,10 @@ Base: ZIP proporcionado en esta conversación. No contiene posibles cambios post
 ```sh
 flutter pub get
 dart format lib test
-flutter analyzecl
+flutter analyze
+flutter test
+```
+
 Ejecuta `flutter run -d linux` después de resolver cualquier error restante.
 
 ## Correcciones

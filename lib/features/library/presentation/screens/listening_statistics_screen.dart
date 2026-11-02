@@ -3,7 +3,6 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
 import 'package:lyra_music/features/library/presentation/widgets/track_artwork.dart';
 import 'package:lyra_music/features/player/presentation/controllers/audio_player_controller.dart';
@@ -29,16 +28,7 @@ class ListeningStatisticsScreen extends ConsumerWidget {
     final artists = byArtist.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Estadísticas'),
-        actions: [
-          IconButton(
-            tooltip: 'Volver a Mi música',
-            icon: const Icon(Icons.library_music_rounded),
-            onPressed: () => context.go('/my-music'),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Estadísticas')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [

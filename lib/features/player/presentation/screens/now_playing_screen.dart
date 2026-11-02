@@ -24,6 +24,10 @@ import 'package:lyra_music/features/library/presentation/controllers/music_colle
 import 'package:lyra_music/features/library/presentation/widgets/collection_actions.dart';
 import 'package:lyra_music/features/downloads/desktop_download.dart';
 
+/// Muestra la cola integrada a la derecha en escritorio; el usuario puede
+/// plegarla sin abrir un diálogo que cubra la portada y los controles.
+final queueDockVisibleProvider = StateProvider<bool>((ref) => true);
+
 class NowPlayingScreen extends ConsumerWidget {
   const NowPlayingScreen({super.key});
 
@@ -77,10 +81,8 @@ class NowPlayingScreen extends ConsumerWidget {
         title: const Text('Reproduciendo ahora'),
         leading: IconButton(
           tooltip: 'Contraer',
-          // go-pop: si el usuario llegó desde el MiniPlayer, regresa a la
-          // pantalla anterior; si abrió /player directo, va a la biblioteca.
-          onPressed: () =>
-              context.canPop() ? context.pop() : context.go('/library'),
+          // Contraer siempre lleva al Inicio, no a Biblioteca.
+          onPressed: () => context.go('/home'),
           icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 28),
         ),
       ),
@@ -114,11 +116,19 @@ class NowPlayingScreen extends ConsumerWidget {
             child: LayoutBuilder(
               builder: (context, bounds) {
                 final wide = bounds.maxWidth >= 760;
+                final hasDockSpace = bounds.maxWidth >= 1040;
+                final dockVisible = ref.watch(queueDockVisibleProvider);
+                final docked = hasDockSpace && dockVisible;
+                final playerWidth = bounds.maxWidth - (docked ? 328.0 : 0.0);
                 final side =
-                    (wide
-                            ? (bounds.maxHeight * 0.72)
-                            : (bounds.maxHeight * 0.48))
-                        .clamp(140.0, wide ? 440.0 : 340.0);
+                    (wide ? bounds.maxHeight * 0.72 : bounds.maxHeight * 0.48)
+                        .clamp(
+                          140.0,
+                          wide
+                              ? (playerWidth * 0.45).clamp(140.0, 440.0)
+                              : 340.0,
+                        )
+                        .toDouble();
                 final artwork = _CoverArt(
                   size: side,
                   animate: animate,
@@ -141,10 +151,14 @@ class NowPlayingScreen extends ConsumerWidget {
                       const SizedBox(height: 18),
                       _TrackTitles(
                         title: currentTrack.title,
-                        artist: currentTrack.artist,
+                        artist: currentTrack.displayArtist,
                         animate: animate,
-                        onArtistTap: () =>
-                            context.push('/artist', extra: currentTrack),
+                        onArtistTap: () {
+                          if (currentTrack.displayArtist !=
+                              'Artista desconocido') {
+                            context.push('/artist', extra: currentTrack);
+                          }
+                        },
                       ),
                       const SizedBox(height: 5),
                       Text(
@@ -194,8 +208,6 @@ class NowPlayingScreen extends ConsumerWidget {
                           if (supportsDesktopDownloads &&
                               currentTrack.id.startsWith('ytmusic:'))
                             OutlinedButton.icon(
-                              tooltip:
-                                  'Guardar audio autorizado en el dispositivo',
                               onPressed: () => showPermittedDownloadDialog(
                                 context,
                                 currentTrack,
@@ -211,27 +223,61 @@ class NowPlayingScreen extends ConsumerWidget {
                       const PlayerControls(),
                       const SizedBox(height: 16),
                       OutlinedButton.icon(
-                        onPressed: () => showQueueSheet(context, ref),
-                        icon: const Icon(Icons.queue_music_rounded),
-                        label: const Text('Ver cola de reproducción'),
+                        onPressed: () {
+                          if (hasDockSpace) {
+                            ref.read(queueDockVisibleProvider.notifier).state =
+                                !dockVisible;
+                          } else {
+                            showQueueSheet(context, ref);
+                          }
+                        },
+                        icon: Icon(
+                          docked
+                              ? Icons.chevron_right_rounded
+                              : Icons.queue_music_rounded,
+                        ),
+                        label: Text(docked ? 'Ocultar cola' : 'Mostrar cola'),
                       ),
                     ],
                   ),
                 );
                 if (wide) {
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(28, 16, 28, 24),
-                    child: Row(
-                      children: [
-                        Expanded(child: Center(child: artwork)),
-                        const SizedBox(width: 26),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            child: Center(child: details),
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(22, 16, 18, 24),
+                          child: Row(
+                            children: [
+                              Expanded(child: Center(child: artwork)),
+                              const SizedBox(width: 18),
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  child: Center(child: details),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (docked) ...[
+                        VerticalDivider(width: 1, color: scheme.outlineVariant),
+                        SizedBox(
+                          width: 327,
+                          child: Material(
+                            color: scheme.surfaceContainerLow,
+                            child: _QueueSheet(
+                              onClose: () {
+                                ref
+                                        .read(queueDockVisibleProvider.notifier)
+                                        .state =
+                                    false;
+                              },
+                            ),
                           ),
                         ),
                       ],
-                    ),
+                    ],
                   );
                 }
                 return SingleChildScrollView(
@@ -401,7 +447,9 @@ Future<void> showQueueSheet(BuildContext context, WidgetRef ref) {
 }
 
 class _QueueSheet extends ConsumerWidget {
-  const _QueueSheet();
+  const _QueueSheet({this.onClose});
+
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -444,7 +492,7 @@ class _QueueSheet extends ConsumerWidget {
               ),
               IconButton(
                 tooltip: 'Cerrar cola',
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: onClose ?? () => Navigator.of(context).pop(),
                 icon: const Icon(Icons.close_rounded),
               ),
             ],
@@ -485,7 +533,7 @@ class _QueueSheet extends ConsumerWidget {
                               : null,
                         ),
                         subtitle: Text(
-                          track.artist,
+                          track.displayArtist,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),

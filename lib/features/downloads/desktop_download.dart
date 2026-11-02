@@ -8,6 +8,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:lyra_music/features/player/domain/models/track.dart';
 import 'package:lyra_music/features/ytmusic/data/ytmusic_audio_resolver.dart';
+import 'package:lyra_music/features/ytmusic/data/ytmusic_client.dart';
 
 bool get supportsDesktopDownloads =>
     Platform.isLinux || Platform.isWindows || Platform.isMacOS;
@@ -71,8 +72,18 @@ Future<void> showPermittedDownloadDialog(
   var startedWriting = false;
   HttpClient? client;
   try {
-    final stream = await const YtMusicAudioResolver().resolveWithoutExternal(
-      id,
+    // Mismo resolvedor que la reproducción: evita rutas divergentes donde
+    // Lyra puede reproducir una pista pero la descarga consulta otra fuente.
+    // No requiere herramientas externas; si están instaladas, el resolvedor
+    // puede aprovecharlas como respaldo opcional.
+    final stream = await const YtMusicAudioResolver().resolve(
+      YtMusicSong(
+        videoId: id,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        thumbnail: track.artworkUrl,
+      ),
     );
     final mime = stream.uri.queryParameters['mime'] ?? '';
     final ext = mime.contains('mp4')

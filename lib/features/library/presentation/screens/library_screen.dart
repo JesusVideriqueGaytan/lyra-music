@@ -7,7 +7,6 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:lyra_music/shared/widgets/lyra_section_banner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import 'package:lyra_music/features/library/presentation/controllers/library_controller.dart';
 import 'package:lyra_music/features/library/presentation/screens/my_music_screen.dart';
@@ -110,11 +109,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Estadísticas',
-            icon: const Icon(Icons.bar_chart_rounded),
-            onPressed: () => context.go('/statistics'),
-          ),
-          IconButton(
             tooltip: 'Actualizar biblioteca',
             icon: const Icon(Icons.refresh_rounded),
             onPressed: state.isScanning ? null : notifier.rescan,
@@ -129,17 +123,32 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 PopupMenuItem(value: sort, child: Text(sort.label)),
             ],
           ),
-          IconButton(
-            tooltip: 'Ajustes',
-            icon: const Icon(Icons.tune_rounded),
-            onPressed: () => context.go('/preferences'),
-          ),
         ],
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+            padding: EdgeInsets.fromLTRB(
+              width >= 700 ? 24 : 16,
+              12,
+              width >= 700 ? 24 : 16,
+              12,
+            ),
+            child: LyraSectionBanner(
+              icon: _collectionTab
+                  ? Icons.library_music_rounded
+                  : Icons.folder_copy_rounded,
+              eyebrow: _collectionTab ? 'TU BIBLIOTECA' : 'ARCHIVOS LOCALES',
+              title: _collectionTab
+                  ? 'Tu colección'
+                  : 'Tu colección, a tu ritmo',
+              subtitle: _collectionTab
+                  ? 'Favoritos, playlists, artistas e historial privados.'
+                  : 'Música del dispositivo, siempre disponible sin conexión.',
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: SegmentedButton<bool>(
               segments: const [
                 ButtonSegment(
@@ -174,14 +183,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const LyraSectionBanner(
-                                icon: Icons.folder_copy_rounded,
-                                eyebrow: 'ARCHIVOS LOCALES',
-                                title: 'Tu colección, a tu ritmo',
-                                subtitle:
-                                    'Música del dispositivo, siempre disponible sin conexión.',
-                              ),
-                              const SizedBox(height: 18),
                               _LibrarySummary(
                                 total: state.totalTracks,
                                 folders: state.folders.length,

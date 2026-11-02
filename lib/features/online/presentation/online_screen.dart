@@ -12,15 +12,12 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:lyra_music/core/performance/performance_controller.dart';
 import 'package:lyra_music/features/library/presentation/widgets/track_artwork.dart';
 import 'package:lyra_music/features/player/presentation/controllers/audio_player_controller.dart';
-import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
-import 'package:lyra_music/features/library/presentation/widgets/collection_actions.dart';
 import 'package:lyra_music/features/player/domain/models/track.dart';
 import 'package:lyra_music/features/ytmusic/data/ytmusic_client.dart';
 import 'package:lyra_music/features/ytmusic/presentation/ytmusic_controller.dart';
@@ -154,6 +151,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     filePath: 'https://music.youtube.com/watch?v=${song.videoId}',
     artworkUrl: song.thumbnail,
     artistId: song.artistId,
+    duration: song.duration,
   );
 
   Future<void> _play(YtMusicSong song) async {
@@ -198,104 +196,6 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     }
   }
 
-  void _showDetails(YtMusicSong song) {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 10, 22, 30),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Detalles de la canción',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  _MusicArtwork(song: song, size: 76),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          song.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          song.artist,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              const Text('Canción del catálogo en línea'),
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  ref
-                          .read(musicCollectionProvider)
-                          .isFavorite(_songReference(song))
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                ),
-                title: const Text('Agregar o quitar de favoritos'),
-                onTap: () {
-                  ref
-                      .read(musicCollectionProvider.notifier)
-                      .toggleFavorite(_songReference(song));
-                  Navigator.of(context).pop();
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.playlist_add_rounded),
-                title: const Text('Añadir a playlist'),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  showAddToPlaylistDialog(
-                    this.context,
-                    ref,
-                    _songReference(song),
-                  );
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.link_rounded),
-                title: const Text('Copiar enlace de la canción'),
-                onTap: () {
-                  Clipboard.setData(
-                    ClipboardData(
-                      text: 'https://music.youtube.com/watch?v=${song.videoId}',
-                    ),
-                  );
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(this.context).showSnackBar(
-                    const SnackBar(content: Text('Enlace copiado')),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(ytMusicControllerProvider);
@@ -311,14 +211,6 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
           'Explorar',
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Mis playlists y cuenta',
-            icon: const Icon(Icons.account_circle_outlined),
-            onPressed: () => context.go('/accounts'),
-          ),
-          const SizedBox(width: 4),
-        ],
       ),
       body: Align(
         alignment: Alignment.topCenter,
@@ -638,7 +530,9 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                               playing: current && playback.playing,
                               loading: _loadingVideoId == song.videoId,
                               onPlay: () => _play(song),
-                              onDetails: () => _showDetails(song),
+                              onPlayNext: () => ref
+                                  .read(audioPlayerControllerProvider.notifier)
+                                  .playNext(_songReference(song)),
                             );
                           },
                         ),
@@ -907,6 +801,11 @@ class _SuggestionGrid extends StatelessWidget {
   }
 }
 
+String _formatDuration(Duration d) {
+  final total = d.inSeconds;
+  return '${total ~/ 60}:${(total % 60).toString().padLeft(2, '0')}';
+}
+
 class _SongRow extends StatelessWidget {
   const _SongRow({
     required this.song,
@@ -914,14 +813,14 @@ class _SongRow extends StatelessWidget {
     required this.playing,
     required this.loading,
     required this.onPlay,
-    required this.onDetails,
+    required this.onPlayNext,
   });
   final YtMusicSong song;
   final bool selected;
   final bool playing;
   final bool loading;
   final VoidCallback onPlay;
-  final VoidCallback onDetails;
+  final VoidCallback onPlayNext;
 
   @override
   Widget build(BuildContext context) {
@@ -969,6 +868,11 @@ class _SongRow extends StatelessWidget {
                     ],
                   ),
                 ),
+                Text(
+                  song.duration == null ? '—' : _formatDuration(song.duration!),
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+                const SizedBox(width: 8),
                 if (playing)
                   Icon(Icons.equalizer_rounded, color: scheme.primary, size: 23)
                 else if (loading)
@@ -983,10 +887,16 @@ class _SongRow extends StatelessWidget {
                     color: scheme.onSurfaceVariant,
                   ),
                 const SizedBox(width: 6),
-                IconButton(
-                  tooltip: 'Más información y copiar enlace',
+                PopupMenuButton<String>(
+                  tooltip: 'Acciones de cola',
                   icon: const Icon(Icons.more_vert_rounded),
-                  onPressed: onDetails,
+                  onSelected: (_) => onPlayNext(),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'next',
+                      child: Text('Reproducir a continuación'),
+                    ),
+                  ],
                 ),
               ],
             ),

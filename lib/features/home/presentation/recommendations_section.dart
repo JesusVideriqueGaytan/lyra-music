@@ -129,7 +129,7 @@ class RecommendationsSection extends ConsumerWidget {
                               style: theme.textTheme.labelLarge,
                             ),
                             Text(
-                              track.artist,
+                              track.displayArtist,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.bodySmall,

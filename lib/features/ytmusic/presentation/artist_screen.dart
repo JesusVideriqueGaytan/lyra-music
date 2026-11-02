@@ -11,6 +11,9 @@ import 'package:lyra_music/features/library/presentation/controllers/favorite_ar
 import 'package:lyra_music/features/library/presentation/widgets/track_artwork.dart';
 import 'package:lyra_music/features/player/domain/models/track.dart';
 import 'package:lyra_music/features/downloads/desktop_download.dart';
+import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
+import 'package:lyra_music/features/library/presentation/widgets/collection_actions.dart';
+import 'package:lyra_music/features/ytmusic/presentation/widgets/song_actions.dart';
 import 'package:lyra_music/features/player/presentation/controllers/audio_player_controller.dart';
 import 'package:lyra_music/features/ytmusic/data/ytmusic_client.dart';
 
@@ -27,6 +30,7 @@ Track _trackForSong(YtMusicSong song) => Track(
   artistId: song.artistId,
   album: song.album,
   filePath: 'https://music.youtube.com/watch?v=${song.videoId}',
+  duration: song.duration,
   artworkUrl: song.thumbnail,
 );
 
@@ -335,42 +339,48 @@ class _ArtistScreenState extends ConsumerState<ArtistScreen> {
                         : matches.length.clamp(0, 6));
                 i++
               )
-                ListTile(
-                  leading: TrackArtwork(
-                    track: _trackForSong(matches[i]),
-                    size: 52,
-                  ),
-                  title: Text(
-                    matches[i].title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    matches[i].artist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (supportsDesktopDownloads)
-                        IconButton(
-                          tooltip: 'Guardar audio autorizado',
-                          icon: const Icon(Icons.download_outlined),
-                          onPressed: () => showPermittedDownloadDialog(
-                            context,
-                            _trackForSong(matches[i]),
-                          ),
-                        ),
-                      const Icon(Icons.play_arrow_rounded),
-                    ],
-                  ),
-                  onTap: () => ref
-                      .read(audioPlayerControllerProvider.notifier)
-                      .playQueue(
-                        matches.map(_trackForSong).toList(),
-                        startIndex: i,
+                Builder(
+                  builder: (context) {
+                    final song = matches[i];
+                    final track = _trackForSong(song);
+                    final favorite = ref
+                        .watch(musicCollectionProvider)
+                        .isFavorite(track);
+                    return ListTile(
+                      leading: TrackArtwork(track: track, size: 52),
+                      title: Text(
+                        song.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
+                      subtitle: Text(
+                        song.artist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: SongActionBar(
+                        track: track,
+                        favorite: favorite,
+                        onFavorite: () => ref
+                            .read(musicCollectionProvider.notifier)
+                            .toggleFavorite(track),
+                        onPlaylist: () =>
+                            showAddToPlaylistDialog(context, ref, track),
+                        onPlayNext: () => ref
+                            .read(audioPlayerControllerProvider.notifier)
+                            .playNext(track),
+                        onDownload: supportsDesktopDownloads
+                            ? () => showPermittedDownloadDialog(context, track)
+                            : null,
+                      ),
+                      onTap: () => ref
+                          .read(audioPlayerControllerProvider.notifier)
+                          .playQueue(
+                            matches.map(_trackForSong).toList(),
+                            startIndex: i,
+                          ),
+                    );
+                  },
                 ),
               if (matches.length > 6 && _filter.isEmpty)
                 Align(
@@ -579,20 +589,39 @@ class _ArtistAlbumScreenState extends ConsumerState<ArtistAlbumScreen> {
               if (!snapshot.hasError && songs.isEmpty)
                 const Text('No hay pistas accesibles para este lanzamiento.'),
               for (var i = 0; i < songs.length; i++)
-                ListTile(
-                  leading: TrackArtwork(
-                    track: _trackForSong(songs[i]),
-                    size: 48,
-                  ),
-                  title: Text(songs[i].title),
-                  subtitle: Text(songs[i].artist),
-                  trailing: const Icon(Icons.play_arrow_rounded),
-                  onTap: () => ref
-                      .read(audioPlayerControllerProvider.notifier)
-                      .playQueue(
-                        songs.map(_trackForSong).toList(),
-                        startIndex: i,
+                Builder(
+                  builder: (context) {
+                    final track = _trackForSong(songs[i]);
+                    final favorite = ref
+                        .watch(musicCollectionProvider)
+                        .isFavorite(track);
+                    return ListTile(
+                      leading: TrackArtwork(track: track, size: 48),
+                      title: Text(songs[i].title),
+                      subtitle: Text(songs[i].artist),
+                      trailing: SongActionBar(
+                        track: track,
+                        favorite: favorite,
+                        onFavorite: () => ref
+                            .read(musicCollectionProvider.notifier)
+                            .toggleFavorite(track),
+                        onPlaylist: () =>
+                            showAddToPlaylistDialog(context, ref, track),
+                        onPlayNext: () => ref
+                            .read(audioPlayerControllerProvider.notifier)
+                            .playNext(track),
+                        onDownload: supportsDesktopDownloads
+                            ? () => showPermittedDownloadDialog(context, track)
+                            : null,
                       ),
+                      onTap: () => ref
+                          .read(audioPlayerControllerProvider.notifier)
+                          .playQueue(
+                            songs.map(_trackForSong).toList(),
+                            startIndex: i,
+                          ),
+                    );
+                  },
                 ),
             ],
           );
