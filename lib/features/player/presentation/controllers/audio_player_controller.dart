@@ -1,6 +1,6 @@
 /// Controlador del reproductor de audio (capa PRESENTACIÓN).
 ///
-/// Envuelve `just_audio` + `audio_service` + `just_audio_background`:
+/// Envuelve `just_audio` + `audio_service` (Linux: audio_service_mpris):
 ///  - Estado de reproducción (playing/paused/loading/error) expuesto a la UI.
 ///  - Cola de reproducción con shuffle real y modos de repetición.
 ///  - Controles de sistema (notificación / pantalla de bloqueo) mediante un
@@ -33,8 +33,12 @@ import 'package:just_audio/just_audio.dart';
 
 import 'package:lyra_music/core/performance/performance_controller.dart'
     show currentTierProvider;
-import 'package:lyra_music/core/performance/performance_tier.dart' show PerformanceTier;
+import 'package:lyra_music/core/performance/performance_tier.dart'
+    show PerformanceTier;
 import 'package:lyra_music/features/player/domain/models/track.dart';
+import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
+import 'package:lyra_music/features/ytmusic/data/ytmusic_audio_resolver.dart';
+import 'package:lyra_music/features/ytmusic/data/ytmusic_client.dart';
 
 /// Alias explícito: el PlaybackState de audio_service colisiona con el nuestro.
 typedef AudioServicePlaybackState = audio_service.PlaybackState;
@@ -174,10 +178,17 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   /// Suscripción al stream de finalización de pista (para repeat off/one).
   StreamSubscription<void>? _completedSub;
 
+  bool _singleSourceQueue = false;
+  String? _lastRecordedStart;
+  String? _lastPositionTrack;
+  Duration? _lastPosition;
+  Duration _pendingListen = Duration.zero;
   StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<PlayerException>? _playerErrorSub;
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<dynamic>? _sequenceSub;
   StreamSubscription<List<MediaItem>>? _queueSub;
+  DateTime _lastSystemPositionUpdate = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// Historial de índices reproducidos para implementar shuffle SIN modificar
   /// la cola visible (el usuario siempre ve el orden original).
@@ -198,12 +209,30 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     _handler.controller = this;
 
     // Suscripciones a streams de just_audio -> estado inmutable de Riverpod.
+    _playerErrorSub = _player.errorStream.listen((error) {
+      final track = state.currentTrack;
+      if (track == null) return;
+      state = state.copyWith(
+        playing: false,
+        buffering: false,
+        error: _humanizePlayerError(error, track),
+      );
+    });
     _playerStateSub = _player.playerStateStream.listen((playerState) {
       state = state.copyWith(
         playing: playerState.playing,
         // ProcessingState reemplazó a TrackingState en just_audio >= 0.9.34.
         buffering: playerState.processingState == ProcessingState.buffering,
       );
+      if (playerState.playing &&
+          playerState.processingState == ProcessingState.ready &&
+          state.currentTrack != null &&
+          _lastRecordedStart != state.currentTrack!.id) {
+        _lastRecordedStart = state.currentTrack!.id;
+        ref
+            .read(musicCollectionProvider.notifier)
+            .recordStarted(state.currentTrack!);
+      }
       _syncPlaybackStateToSystem();
     });
 
@@ -220,16 +249,44 @@ class AudioPlayerController extends Notifier<PlaybackState> {
 
     // Solo emitimos posición cada ~500 ms en tier bajo para ahorrar CPU;
     // el ProgressBar escucha además el stream crudo para suavizar el slider.
-    _positionSub = _player.positionStream.listen(
-      (position) => state = state.copyWith(position: position),
-    );
+    _positionSub = _player.positionStream.listen((position) {
+      final track = state.currentTrack;
+      if (track != null &&
+          state.playing &&
+          _lastPositionTrack == track.id &&
+          _lastPosition != null) {
+        final delta = position - _lastPosition!;
+        // No contar saltos del usuario, rebobinados o tiempos enormes.
+        if (delta > Duration.zero && delta < const Duration(seconds: 3)) {
+          _pendingListen += delta;
+          if (_pendingListen >= const Duration(seconds: 5)) {
+            ref
+                .read(musicCollectionProvider.notifier)
+                .addListening(track, _pendingListen);
+            _pendingListen = Duration.zero;
+          }
+        }
+      }
+      if (track?.id != _lastPositionTrack) _pendingListen = Duration.zero;
+      _lastPositionTrack = track?.id;
+      _lastPosition = position;
+      state = state.copyWith(position: position);
+      // No publicar sobre D-Bus cada frame: basta con informar cada 2 s.
+      final now = DateTime.now();
+      if (now.difference(_lastSystemPositionUpdate) >=
+          const Duration(seconds: 2)) {
+        _lastSystemPositionUpdate = now;
+        _syncPlaybackStateToSystem();
+      }
+    });
 
     _sequenceSub = _player.sequenceStateStream.listen((sequenceState) {
       // Sincronizamos el índice REAL de just_audio con nuestro estado visible:
       // al terminar una pista de forma natural, el plugin avanza solo y
       // nosotros debemos reflejarlo (cola, MiniPlayer, notificación).
       final realIndex = sequenceState.currentIndex;
-      if (realIndex != null &&
+      if (!_singleSourceQueue &&
+          realIndex != null &&
           realIndex >= 0 &&
           realIndex < state.queue.length &&
           realIndex != state.currentIndex) {
@@ -260,6 +317,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
 
     ref.onDispose(() async {
       await _playerStateSub?.cancel();
+      await _playerErrorSub?.cancel();
       await _positionSub?.cancel();
       await _sequenceSub?.cancel();
       await _queueSub?.cancel();
@@ -290,13 +348,77 @@ class AudioPlayerController extends Notifier<PlaybackState> {
 
   Future<void> _initAudioService() async {
     try {
-      // just_audio_background intercepta globalmente AudioPlayer: los
-      // MediaItems que publiquemos aparecerán en la notificación del SO.
-      // (AudioService.init ya se ejecuta en main(); aquí solo marcamos listo.)
+      // AudioService.init se registra en main() cuando hay plataforma MPRIS.
+      // Este indicador solo declara que el controlador puede aceptar órdenes.
       state = state.copyWith(handlerReady: true);
     } catch (e) {
       state = state.copyWith(error: 'Servicio de audio no disponible: $e');
     }
+  }
+
+  // Fuente unificada para archivos locales y flujos HTTPS. Las referencias
+  // remotas se resuelven de nuevo inmediatamente antes de reproducir.
+  AudioSource _audioSourceFor(Track track) {
+    final tag = MediaItem(
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+    );
+    if (track.isRemote) {
+      return AudioSource.uri(Uri.parse(track.filePath), tag: tag);
+    }
+    return AudioSource.file(track.filePath, tag: tag);
+  }
+
+  /// Las URLs de los proveedores pueden caducar. No las guardamos en listas
+  /// o favoritos: recuperamos una nueva URL al seleccionar cada canción.
+  Future<AudioSource> _sourceForPlayback(Track track) async {
+    if (!track.id.startsWith('ytmusic:')) return _audioSourceFor(track);
+    final videoId = track.id.substring('ytmusic:'.length);
+    if (videoId.isEmpty) throw StateError('Identificador de canción vacío.');
+    final stream = await const YtMusicAudioResolver().resolve(
+      YtMusicSong(
+        videoId: videoId,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        thumbnail: track.artworkUrl,
+      ),
+    );
+    // Cabeceras del extractor deben viajar hasta el reproductor. Las URL
+    // temporales y cabeceras jamás se guardan en favoritos/historial.
+    return AudioSource.uri(
+      stream.uri,
+      headers: stream.headers.isEmpty ? null : stream.headers,
+      tag: MediaItem(
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+      ),
+    );
+  }
+
+  void _flushListening() {
+    if (_pendingListen > Duration.zero && state.currentTrack != null) {
+      ref
+          .read(musicCollectionProvider.notifier)
+          .addListening(state.currentTrack!, _pendingListen);
+      _pendingListen = Duration.zero;
+    }
+  }
+
+  Future<void> _loadSingleIndex(int index) async {
+    final track = state.queue[index];
+    final source = await _sourceForPlayback(track);
+    await _player.setAudioSource(source);
+    // No esperes el Future de play(): solo finaliza al pausar o terminar.
+    unawaited(
+      _player.play().catchError((Object e, StackTrace _) {
+        state = state.copyWith(error: _humanizePlayerError(e, track));
+      }),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -310,7 +432,12 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       return;
     }
 
+    _flushListening();
     final safeIndex = startIndex.clamp(0, tracks.length - 1);
+    _singleSourceQueue = tracks.any((t) => t.id.startsWith('ytmusic:'));
+    _lastRecordedStart = null;
+    _lastPosition = null;
+    _pendingListen = Duration.zero;
     _shuffleHistory
       ..clear()
       ..add(safeIndex);
@@ -325,60 +452,102 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       clearError: true,
     );
     _publishQueue(tracks, safeIndex);
+    _syncPlaybackStateToSystem();
 
     try {
+      if (_singleSourceQueue) {
+        await _loadSingleIndex(safeIndex);
+        return;
+      }
       // API moderna de just_audio 0.10.x: setAudioSources reemplaza al
       // ConcatenatingAudioSource manual (deprecado). El manejo del orden y
       // la precarga queda en manos del plugin.
-      final sources = tracks
-          .map((t) => AudioSource.file(t.filePath, tag: MediaItem(id: t.id, title: t.title, artist: t.artist, album: t.album)))
-          .toList();
+      final sources = tracks.map((t) => _audioSourceFor(t)).toList();
       await _player.setAudioSources(
         sources,
         preload: _preloadWholeQueue,
         initialIndex: safeIndex,
         initialPosition: Duration.zero,
       );
-      await _player.play();
+      // just_audio completa el Future de play() cuando la reproducción se
+      // detiene o termina, NO cuando empieza. No bloquear la interfaz ni el
+      // spinner de la búsqueda durante toda la canción.
+      unawaited(
+        _player.play().catchError((Object e, StackTrace stack) {
+          state = state.copyWith(
+            error: _humanizePlayerError(e, tracks[safeIndex]),
+          );
+        }),
+      );
     } on PlayerInterruptedException catch (_) {
       // Otra carga más reciente ganó la carrera: NO es un error real, se
       // ignora silenciosamente (comportamiento documentado por el plugin).
     } on PlayerException catch (e) {
-      state = state.copyWith(
-        error: _humanizePlayerError(e, tracks[safeIndex]),
-      );
+      state = state.copyWith(error: _humanizePlayerError(e, tracks[safeIndex]));
     } on FileSystemException catch (e) {
       state = state.copyWith(
         error: 'Archivo no encontrado: ${e.path ?? tracks[safeIndex].filePath}',
       );
     } catch (e) {
-      state = state.copyWith(error: 'No se pudo reproducir: $e');
+      state = state.copyWith(error: _humanizePlayerError(e, tracks[safeIndex]));
     }
   }
 
   /// Salta directamente a una pista de la cola actual.
   Future<void> playAt(int index) async {
     if (index < 0 || index >= state.queue.length) return;
+    _flushListening();
     try {
+      _lastRecordedStart = null;
+      if (_singleSourceQueue) {
+        state = state.copyWith(
+          currentIndex: index,
+          position: Duration.zero,
+          duration: state.queue[index].duration,
+          clearError: true,
+        );
+        _lastPosition = null;
+        _publishQueue(state.queue, index);
+        await _loadSingleIndex(index);
+        return;
+      }
       await _player.seek(Duration.zero, index: index);
       _shuffleHistory.add(index);
       state = state.copyWith(currentIndex: index, clearError: true);
-      await _player.play();
+      // play() finishes when playback ends, so do not await here.
+      unawaited(
+        _player.play().catchError((Object e, StackTrace _) {
+          state = state.copyWith(
+            error: _humanizePlayerError(e, state.queue[index]),
+          );
+        }),
+      );
     } catch (e) {
-      state = state.copyWith(error: 'Error al saltar a la pista $index: $e');
+      state = state.copyWith(
+        error: _humanizePlayerError(e, state.queue[index]),
+      );
     }
   }
 
   Future<void> play() async {
     try {
-      await _player.play();
+      unawaited(
+        _player.play().catchError((Object e, StackTrace _) {
+          state = state.copyWith(
+            error: 'No se pudo iniciar el audio. Prueba otra pista.',
+          );
+        }),
+      );
     } catch (e) {
-      state = state.copyWith(error: 'Error al reproducir: $e');
+      state = state.copyWith(
+        error: 'No se pudo iniciar el audio. Prueba otra pista.',
+      );
     }
   }
 
   Future<void> pause() async {
     try {
+      _flushListening();
       await _player.pause();
     } catch (e) {
       state = state.copyWith(error: 'Error al pausar: $e');
@@ -398,6 +567,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     try {
       await _player.seek(position);
       state = state.copyWith(position: position);
+      _syncPlaybackStateToSystem();
     } catch (e) {
       state = state.copyWith(error: 'Error al buscar posición: $e');
     }
@@ -415,8 +585,10 @@ class AudioPlayerController extends Notifier<PlaybackState> {
 
   Future<void> stop() async {
     try {
+      _flushListening();
       await _player.stop();
       state = state.copyWith(playing: false, position: Duration.zero);
+      _syncPlaybackStateToSystem();
     } catch (e) {
       state = state.copyWith(error: 'Error al detener: $e');
     }
@@ -560,13 +732,12 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     );
     _publishQueue(reordered, current);
 
+    if (_singleSourceQueue) return; // La pista activa ya está cargada.
     // Reconstruimos la fuente para reflejar el nuevo orden en just_audio.
     final wasPlaying = state.playing;
     final resumePosition = state.position;
     try {
-      final sources = reordered
-          .map((t) => AudioSource.file(t.filePath, tag: MediaItem(id: t.id, title: t.title, artist: t.artist, album: t.album)))
-          .toList();
+      final sources = reordered.map((t) => _audioSourceFor(t)).toList();
       // setAudioSources (0.10.x): reemplaza a ConcatenatingAudioSource.
       await _player.setAudioSources(
         sources,
@@ -605,10 +776,12 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     );
     _publishQueue(remaining, current);
 
+    if (_singleSourceQueue) {
+      await _loadSingleIndex(current);
+      return;
+    }
     try {
-      final sources = remaining
-          .map((t) => AudioSource.file(t.filePath, tag: MediaItem(id: t.id, title: t.title, artist: t.artist, album: t.album)))
-          .toList();
+      final sources = remaining.map((t) => _audioSourceFor(t)).toList();
       // setAudioSources (0.10.x): reemplaza a ConcatenatingAudioSource.
       await _player.setAudioSources(
         sources,
@@ -629,6 +802,15 @@ class AudioPlayerController extends Notifier<PlaybackState> {
 
   /// Reacciona al fin natural de una pista respetando el modo de repetición.
   void _onTrackCompleted() {
+    if (_singleSourceQueue) {
+      if (state.repeatMode == RepeatMode.one) {
+        unawaited(playAt(state.currentIndex));
+      } else if (state.currentIndex < state.queue.length - 1 ||
+          state.repeatMode == RepeatMode.all) {
+        unawaited(next());
+      }
+      return;
+    }
     switch (state.repeatMode) {
       case RepeatMode.one:
         // Reiniciar la misma pista desde el principio.
@@ -670,7 +852,9 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       duration: track.duration,
       // artUri como file:// permite que la notificación muestre portadas
       // locales cuando existan (Fase 2.x: extracción de metadatos ID3).
-      artUri: track.coverPath != null ? Uri.file(track.coverPath!) : null,
+      artUri: track.artworkUrl != null
+          ? Uri.tryParse(track.artworkUrl!)
+          : (track.coverPath != null ? Uri.file(track.coverPath!) : null),
     );
   }
 
@@ -680,26 +864,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     if (current == null) return;
     // Nota: colisión de nombres entre PlaybackState propio y audio_service:
     // usamos el prefijo de librería para referirnos al del plugin.
-    _handler.playbackState.add(
-      AudioServicePlaybackState(
-        processingState: state.buffering
-            ? AudioProcessingState.loading
-            : AudioProcessingState.ready,
-        playing: state.playing,
-        controls: [
-          MediaControl.rewind,
-          if (state.playing) MediaControl.pause else MediaControl.play,
-          MediaControl.stop,
-          MediaControl.fastForward,
-        ],
-        systemActions: const <MediaAction>{
-          MediaAction.seek,
-          MediaAction.seekForward,
-          MediaAction.seekBackward,
-        },
-        androidCompactActionIndices: const <int>[0, 1, 3],
-      ),
-    );
+    _handler.playbackState.add(systemPlaybackState(state));
     _handler.mediaItem.add(
       _toMediaItem(
         current,
@@ -710,12 +875,22 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   /// Traducción amigable de errores técnicos de just_audio.
   String _humanizePlayerError(Object e, Track track) {
     final text = e.toString();
+    if (e is UnavailableAudioException) return e.reason;
+    if (text.contains('403') && track.id.startsWith('ytmusic:')) {
+      return 'El proveedor rechazó el audio (HTTP 403). '
+          'No es un problema de volumen ni de tus archivos locales.';
+    }
     if (text.contains('File not found') ||
         text.contains('FileSystemException')) {
       return 'El archivo "${track.fileName}" ya no existe en su ubicación.';
     }
     if (text.contains('unsupported') || text.contains('Unsupport')) {
       return 'Formato no soportado: "${track.fileName}".';
+    }
+    if (track.id.startsWith('ytmusic:')) {
+      return 'No se pudo abrir el audio de “${track.title}”. '
+          'El enlace del proveedor puede haber caducado, estar restringido '
+          'o requerir autenticación. Prueba otra canción.';
     }
     return 'Error de reproducción en "${track.title}": $e';
   }
@@ -741,4 +916,36 @@ extension on MediaItem {
       artUri: artUri,
     );
   }
+}
+
+/// Construye el estado de controles publicado al sistema operativo.
+///
+/// Función pura, compartida y comprobable sin iniciar audio ni D-Bus.
+AudioServicePlaybackState systemPlaybackState(PlaybackState state) {
+  final hasTrack = state.currentTrack != null;
+  return AudioServicePlaybackState(
+    processingState: !hasTrack
+        ? AudioProcessingState.idle
+        : state.buffering
+        ? AudioProcessingState.buffering
+        : AudioProcessingState.ready,
+    playing: state.playing,
+    updatePosition: state.position,
+    updateTime: DateTime.now(),
+    queueIndex: hasTrack ? state.currentIndex : null,
+    controls: hasTrack
+        ? <MediaControl>[
+            MediaControl.skipToPrevious,
+            if (state.playing) MediaControl.pause else MediaControl.play,
+            MediaControl.skipToNext,
+            MediaControl.stop,
+          ]
+        : <MediaControl>[],
+    systemActions: hasTrack
+        ? const <MediaAction>{MediaAction.seek}
+        : const <MediaAction>{},
+    androidCompactActionIndices: hasTrack
+        ? const <int>[0, 1, 2]
+        : const <int>[],
+  );
 }

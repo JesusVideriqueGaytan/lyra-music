@@ -31,6 +31,7 @@ class Track {
     this.genre,
     this.trackNumber,
     this.year,
+    this.artworkUrl,
   });
 
   /// Identificador estable: usamos la ruta absoluta porque es única en el
@@ -65,6 +66,12 @@ class Track {
   /// Año de publicación (opcional).
   final int? year;
 
+  /// URL pública de la portada cuando la pista proviene de un catálogo permitido.
+  final String? artworkUrl;
+
+  /// Fuente remota permitida; los archivos descargados vuelven a ser locales.
+  bool get isRemote => Uri.tryParse(filePath)?.scheme == 'https';
+
   /// Nombre del archivo con extensión (útil para mostrar cuando el título
   /// coincide con el nombre crudo del fichero).
   String get fileName => filePath.split(Platform.pathSeparator).last;
@@ -88,8 +95,9 @@ class Track {
   factory Track.fromFilePath(String path) {
     final fileName = path.split(Platform.pathSeparator).last;
     final dotIndex = fileName.lastIndexOf('.');
-    final cleanTitle =
-        dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+    final cleanTitle = dotIndex > 0
+        ? fileName.substring(0, dotIndex)
+        : fileName;
 
     // Convención habitual "Artist - Title.mp3": si el nombre contiene " - "
     // lo interpretamos como artista + título para mejorar la UI sin leer
@@ -127,6 +135,7 @@ class Track {
       'genre': genre,
       'trackNumber': trackNumber,
       'year': year,
+      'artworkUrl': artworkUrl,
     };
   }
 
@@ -144,6 +153,7 @@ class Track {
       genre: map['genre'] as String?,
       trackNumber: map['trackNumber'] as int?,
       year: map['year'] as int?,
+      artworkUrl: map['artworkUrl'] as String?,
     );
   }
 
@@ -158,6 +168,7 @@ class Track {
     String? genre,
     int? trackNumber,
     int? year,
+    String? artworkUrl,
   }) {
     return Track(
       id: id,
@@ -170,6 +181,7 @@ class Track {
       genre: genre ?? this.genre,
       trackNumber: trackNumber ?? this.trackNumber,
       year: year ?? this.year,
+      artworkUrl: artworkUrl ?? this.artworkUrl,
     );
   }
 

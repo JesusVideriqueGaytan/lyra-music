@@ -1,9 +1,4 @@
-/// Pantalla de la biblioteca musical local.
-///
-/// Muestra las canciones encontradas al escanear las carpetas autorizadas,
-/// con búsqueda, filtro por carpeta, ordenación y acciones para añadir
-/// carpetas / re-escanear. Al tocar una canción inicia la cola completa
-/// (todas las pistas visibles) comenzando en la seleccionada.
+/// Biblioteca local adaptable. Conserva búsqueda, escaneo, orden y carpetas.
 library;
 
 import 'dart:io' show Platform;
@@ -13,363 +8,578 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:lyra_music/core/performance/performance_controller.dart';
+import 'package:lyra_music/features/library/presentation/controllers/library_controller.dart';
+import 'package:lyra_music/features/library/presentation/widgets/track_artwork.dart';
 import 'package:lyra_music/features/player/domain/models/track.dart';
 import 'package:lyra_music/features/player/presentation/controllers/audio_player_controller.dart';
-import 'package:lyra_music/features/library/presentation/controllers/library_controller.dart';
-
-/// Import selectivo del repositorio para la acción "añadir carpeta": evita
-/// colisión de nombres y hace explícita la dependencia de capa data.
+import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
+import 'package:lyra_music/features/library/presentation/widgets/collection_actions.dart';
 import 'package:lyra_music/features/player/data/repositories/local_audio_repository.dart'
     show audioRepositoryProvider;
 
-class LibraryScreen extends ConsumerWidget {
+enum _LibraryTab { songs, artists, albums, folders }
+
+extension on _LibraryTab {
+  String get label => switch (this) {
+    _LibraryTab.songs => 'Canciones',
+    _LibraryTab.artists => 'Artistas',
+    _LibraryTab.albums => 'Álbumes',
+    _LibraryTab.folders => 'Carpetas',
+  };
+  IconData get icon => switch (this) {
+    _LibraryTab.songs => Icons.music_note_rounded,
+    _LibraryTab.artists => Icons.person_outline_rounded,
+    _LibraryTab.albums => Icons.album_outlined,
+    _LibraryTab.folders => Icons.folder_outlined,
+  };
+}
+
+class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final libraryState = ref.watch(libraryControllerProvider);
-    final visibleTracks = ref.watch(visibleTracksProvider);
-    final features = ref.watch(adaptiveFeaturesProvider);
+  ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  final _searchController = TextEditingController();
+  _LibraryTab _tab = _LibraryTab.songs;
+  String? _groupTitle;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _clearFilters() {
+    _searchController.clear();
+    ref.read(libraryControllerProvider.notifier)
+      ..setSearchQuery('')
+      ..setFolderFilter(null);
+    setState(() {
+      _groupTitle = null;
+      _tab = _LibraryTab.songs;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(libraryControllerProvider);
+    final visible = ref.watch(visibleTracksProvider);
     final notifier = ref.read(libraryControllerProvider.notifier);
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final width = MediaQuery.sizeOf(context).width;
+    final counts = {
+      _LibraryTab.songs: state.totalTracks,
+      _LibraryTab.artists: state.tracks.map((e) => e.artist).toSet().length,
+      _LibraryTab.albums: state.tracks.map((e) => e.album).toSet().length,
+      _LibraryTab.folders: state.folders.length,
+    };
+
+    List<Track> filtered = visible;
+    if (_groupTitle != null) {
+      filtered = visible
+          .where(
+            (track) => switch (_tab) {
+              _LibraryTab.artists => track.artist == _groupTitle,
+              _LibraryTab.albums => track.album == _groupTitle,
+              _LibraryTab.folders => track.directoryPath == _groupTitle,
+              _ => true,
+            },
+          )
+          .toList(growable: false);
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Tu música', style: TextStyle(fontWeight: FontWeight.w800)),
-        actions: <Widget>[
-          // Reescanear: icono girando mientras isScanning (solo si hay animaciones).
+        title: const Text(
+          'Tu música',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        actions: [
           IconButton(
-            tooltip: 'Volver a escanear',
-            onPressed: libraryState.isScanning ? null : () => notifier.rescan(),
-            icon: AnimatedRotation(
-              turns: libraryState.isScanning ? 1 : 0,
-              duration: features.canUseAnimations
-                  ? const Duration(seconds: 1)
-                  : Duration.zero,
-              child: const Icon(Icons.refresh_rounded),
-            ),
+            tooltip: 'Favoritos, playlists e historial',
+            icon: const Icon(Icons.favorite_border_rounded),
+            onPressed: () => context.go('/my-music'),
           ),
-          // Menú de ordenación.
+          IconButton(
+            tooltip: 'Actualizar biblioteca',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: state.isScanning ? null : notifier.rescan,
+          ),
           PopupMenuButton<LibrarySort>(
-            tooltip: 'Ordenar por',
+            tooltip: 'Ordenar canciones',
             icon: const Icon(Icons.sort_rounded),
-            initialValue: libraryState.sort,
+            initialValue: state.sort,
             onSelected: notifier.setSort,
-            itemBuilder: (context) => <PopupMenuEntry<LibrarySort>>[
+            itemBuilder: (context) => [
               for (final sort in LibrarySort.values)
-                PopupMenuItem<LibrarySort>(
-                  value: sort,
-                  child: Text(sort.label),
-                ),
+                PopupMenuItem(value: sort, child: Text(sort.label)),
             ],
           ),
           IconButton(
-            tooltip: 'Ajustes de rendimiento',
-            onPressed: () => context.go('/settings'),
+            tooltip: 'Ajustes',
             icon: const Icon(Icons.tune_rounded),
+            onPressed: () => context.go('/preferences'),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddFolderSheet(context, ref),
-        icon: const Icon(Icons.create_new_folder_rounded),
-        label: const Text('Añadir carpeta'),
-      ),
-      body: Column(
-        children: <Widget>[
-          // Banner de error del escaneo (carpetas sin permisos, etc.).
-          if (libraryState.error != null)
-            MaterialBanner(
-              content: Text(libraryState.error!),
-              backgroundColor: scheme.errorContainer,
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => notifier.setSearchQuery(
-                    libraryState.searchQuery,
-                  ), // no-op: solo cerrar banner
-                  child: const SizedBox.shrink(),
-                ),
-              ],
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            ),
-
-          // Campo de búsqueda.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: SearchBar(
-              constraints: const BoxConstraints(minHeight: 48),
-              hintText: 'Buscar título, artista o álbum…',
-              leading: const Icon(Icons.search_rounded),
-              elevation: const WidgetStatePropertyAll<double>(0),
-              onChanged: notifier.setSearchQuery,
-            ),
-          ),
-
-          // Chips de filtro por carpeta (solo si hay más de una).
-          if (notifier.uniqueFolders().length > 1)
-            SizedBox(
-              height: 44,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: <Widget>[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: FilterChip(
-                      label: const Text('Todas'),
-                      selected: libraryState.folderFilter == null,
-                      onSelected: (_) => notifier.setFolderFilter(null),
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                width >= 700 ? 24 : 16,
+                16,
+                width >= 700 ? 24 : 16,
+                12,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Tu colección, a tu ritmo',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  for (final folder in notifier.uniqueFolders())
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 220),
-                        child: FilterChip(
-                          label: Text(
-                            folder
-                                .split(RegExp(r'[/\\]'))
-                                .where((s) => s.isNotEmpty)
-                                .last,
-                          ),
-                          selected: libraryState.folderFilter == folder,
-                          onSelected: (selected) => notifier.setFolderFilter(
-                            selected ? folder : null,
-                          ),
+                  const SizedBox(height: 5),
+                  Text(
+                    'Tu música local, organizada y disponible sin conexión.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _LibrarySummary(
+                    total: state.totalTracks,
+                    folders: state.folders.length,
+                    onAdd: () => _showAddFolderSheet(context, ref),
+                    onPlay: state.tracks.isEmpty
+                        ? null
+                        : () => ref
+                              .read(audioPlayerControllerProvider.notifier)
+                              .playQueue(
+                                visible.isEmpty ? state.tracks : visible,
+                              ),
+                  ),
+                  const SizedBox(height: 20),
+                  SearchBar(
+                    controller: _searchController,
+                    hintText: 'Buscar canciones, artistas o álbumes',
+                    leading: const Icon(Icons.search_rounded),
+                    constraints: const BoxConstraints(minHeight: 48),
+                    elevation: const WidgetStatePropertyAll<double>(0),
+                    onChanged: notifier.setSearchQuery,
+                    trailing: [
+                      if (state.searchQuery.isNotEmpty)
+                        IconButton(
+                          tooltip: 'Borrar búsqueda',
+                          onPressed: () {
+                            _searchController.clear();
+                            notifier.setSearchQuery('');
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                    ],
+                  ),
+                  if (state.error != null) ...[
+                    const SizedBox(height: 10),
+                    Card(
+                      color: scheme.errorContainer,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              color: scheme.onErrorContainer,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                state.error!,
+                                style: TextStyle(
+                                  color: scheme.onErrorContainer,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
+                  ],
+                  const SizedBox(height: 20),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final tab in _LibraryTab.values)
+                        ChoiceChip(
+                          avatar: Icon(tab.icon, size: 17),
+                          label: Text('${tab.label}  ${counts[tab]}'),
+                          selected: _tab == tab,
+                          onSelected: (_) => setState(() {
+                            _tab = tab;
+                            _groupTitle = null;
+                          }),
+                        ),
+                    ],
+                  ),
+                  if (_groupTitle != null) ...[
+                    const SizedBox(height: 12),
+                    ActionChip(
+                      avatar: const Icon(Icons.arrow_back_rounded, size: 18),
+                      label: Text(
+                        'Todas las ${_tab.label.toLowerCase()}  /  '
+                        '${_tab == _LibraryTab.folders ? _folderName(_groupTitle!) : _groupTitle!}',
+                      ),
+                      onPressed: () => setState(() => _groupTitle = null),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _groupTitle == null
+                              ? _tab.label
+                              : (_tab == _LibraryTab.folders
+                                    ? _folderName(_groupTitle!)
+                                    : _groupTitle!),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      if (state.searchQuery.isNotEmpty ||
+                          state.folderFilter != null)
+                        TextButton(
+                          onPressed: _clearFilters,
+                          child: const Text('Limpiar filtros'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
-
-          // Cuerpo de la lista con estados vacíos específicos.
-          Expanded(
-            child: _buildBody(context, ref, libraryState, visibleTracks),
           ),
+          if (state.isScanning)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (state.folders.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _EmptyLibrary(
+                title: 'Tu biblioteca comienza aquí',
+                description:
+                    'Elige una carpeta con tus canciones para empezar. '
+                    'Lyra funcionará sin depender de Internet.',
+                actionLabel: 'Añadir carpeta',
+                onAction: () => _showAddFolderSheet(context, ref),
+              ),
+            )
+          else if (visible.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: _EmptyLibrary(
+                title: 'No encontramos canciones',
+                description:
+                    'Prueba otra búsqueda o vuelve a escanear tus carpetas.',
+                actionLabel: 'Limpiar búsqueda',
+                onAction: _clearFilters,
+              ),
+            )
+          else if (_tab == _LibraryTab.songs || _groupTitle != null)
+            SliverList.builder(
+              itemCount: filtered.length,
+              itemBuilder: (context, index) => _SongRow(
+                track: filtered[index],
+                queue: filtered,
+                index: index,
+              ),
+            )
+          else
+            _buildGroups(context, visible, width),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
       ),
     );
   }
 
-  Widget _buildBody(
-    BuildContext context,
-    WidgetRef ref,
-    LibraryState state,
-    List<Track> tracks,
-  ) {
-    final scheme = Theme.of(context).colorScheme;
-
-    // Escaneando: spinner + mensaje.
-    if (state.isScanning) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(
-              'Escaneando música…',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
+  Widget _buildGroups(BuildContext context, List<Track> tracks, double width) {
+    final groups = <String, int>{};
+    for (final track in tracks) {
+      final key = switch (_tab) {
+        _LibraryTab.artists => track.artist,
+        _LibraryTab.albums => track.album,
+        _LibraryTab.folders => track.directoryPath,
+        _LibraryTab.songs => track.title,
+      };
+      groups.update(key, (n) => n + 1, ifAbsent: () => 1);
+    }
+    final sorted = groups.keys.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    // Dependemos del ancho real del contenido, no de la pantalla física.
+    final availableWidth = width > 850 ? width - 216 : width;
+    final columns = availableWidth >= 1000
+        ? 4
+        : availableWidth >= 680
+        ? 3
+        : 2;
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      sliver: SliverGrid.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: availableWidth < 520 ? 1.15 : 1.5,
         ),
-      );
-    }
-
-    // Sin carpetas configuradas: onboarding claro.
-    if (state.folders.isEmpty) {
-      return _EmptyState(
-        icon: Icons.folder_off_rounded,
-        title: 'Aún no has añadido música',
-        message:
-            'Lyra reproduce archivos MP3, FLAC, OGG, WAV y M4A que estén en '
-            'tu dispositivo. Añade una carpeta para construirla.',
-        actionLabel: 'Añadir primera carpeta',
-        onAction: () => _showAddFolderSheet(context, ref),
-      );
-    }
-
-    // Carpetas configuradas pero sin resultados (o filtrado vacío).
-    if (tracks.isEmpty) {
-      final filteredOut = state.tracks.isNotEmpty;
-      return _EmptyState(
-        icon: filteredOut
-            ? Icons.filter_alt_off_rounded
-            : Icons.music_off_rounded,
-        title: filteredOut ? 'Ningún resultado' : 'No se encontró audio',
-        message: filteredOut
-            ? 'Prueba con otro texto de búsqueda o quita el filtro de carpeta.'
-            : 'No se encontró audio compatible. Comprueba la carpeta seleccionada y sus subcarpetas.',
-        actionLabel: filteredOut ? 'Limpiar filtros' : 'Reescanear',
-        onAction: () {
-          if (filteredOut) {
-            ref.read(libraryControllerProvider.notifier)
-              ..setSearchQuery('')
-              ..setFolderFilter(null);
-          } else {
-            ref.read(libraryControllerProvider.notifier).rescan();
-          }
-        },
-      );
-    }
-
-    return ListView.builder(
-      // Padding inferior para que el MiniPlayer flotante no tape la última fila.
-      padding: const EdgeInsets.only(bottom: 96),
-      itemCount: tracks.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '${tracks.length} canción${tracks.length == 1 ? '' : 'es'}',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
+        itemCount: sorted.length,
+        itemBuilder: (context, index) {
+          final key = sorted[index];
+          final title = _tab == _LibraryTab.folders ? _folderName(key) : key;
+          final theme = Theme.of(context);
+          final scheme = theme.colorScheme;
+          return Card(
+            margin: EdgeInsets.zero,
+            color: scheme.surfaceContainerLow,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => setState(() => _groupTitle = key),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(_tab.icon, color: scheme.primary, size: 32),
+                    const Spacer(),
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${groups[key]} canciones',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           );
-        }
-        final track = tracks[index - 1];
-        return _TrackTile(track: track, allVisibleTracks: tracks);
-      },
+        },
+      ),
     );
   }
 }
 
-/// Fila individual de canción en la biblioteca.
-class _TrackTile extends ConsumerWidget {
-  const _TrackTile({required this.track, required this.allVisibleTracks});
-
-  final Track track;
-  final List<Track> allVisibleTracks;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final features = ref.watch(adaptiveFeaturesProvider);
-    final currentId = ref.watch(
-      audioPlayerControllerProvider.select((s) => s.currentTrack?.id),
-    );
-    final isCurrent = currentId == track.id;
-    final scheme = Theme.of(context).colorScheme;
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
-      elevation: 0,
-      color: isCurrent ? scheme.primaryContainer.withValues(alpha: 0.42) : scheme.surfaceContainerLow,
-      child: ListTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      onTap: () {
-        // Reproducimos TODA la lista visible comenzando por esta pista:
-        // así next/previous recorren la biblioteca filtrada actual.
-        final startIndex = allVisibleTracks.indexOf(track);
-        ref
-            .read(audioPlayerControllerProvider.notifier)
-            .playQueue(allVisibleTracks, startIndex: startIndex);
-      },
-      leading: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          // Radio menor en tier low: menos anti-aliasing de esquinas.
-          borderRadius: BorderRadius.circular(
-            features.canUseAnimations ? 8 : 4,
-          ),
-          color: isCurrent
-              ? scheme.primaryContainer
-              : scheme.surfaceContainerHighest,
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Icon(
-          isCurrent ? Icons.equalizer_rounded : Icons.music_note_rounded,
-          size: 22,
-          color: isCurrent ? scheme.primary : scheme.onSurfaceVariant,
-        ),
-      ),
-      title: Text(
-        track.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: isCurrent
-            ? TextStyle(fontWeight: FontWeight.bold, color: scheme.primary)
-            : null,
-      ),
-      subtitle: Text(
-        '${track.artist} • ${track.folderName}',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: track.duration != null
-          ? Text(
-              _formatShortDuration(track.duration!),
-              style: Theme.of(
-                context,
-              ).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
-            )
-          : null,
-      ),
-    );
-  }
-
-  String _formatShortDuration(Duration d) {
-    final m = d.inMinutes;
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
+String _folderName(String path) {
+  final segments = path
+      .split(RegExp(r'[/\\]'))
+      .where((s) => s.isNotEmpty)
+      .toList();
+  return segments.isEmpty ? path : segments.last;
 }
 
-/// Estado vacío genérico con icono, mensaje y acción.
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({
-    required this.icon,
-    required this.title,
-    required this.message,
-    required this.actionLabel,
-    required this.onAction,
+class _LibrarySummary extends StatelessWidget {
+  const _LibrarySummary({
+    required this.total,
+    required this.folders,
+    required this.onAdd,
+    required this.onPlay,
   });
-
-  final IconData icon;
-  final String title;
-  final String message;
-  final String actionLabel;
-  final VoidCallback onAction;
+  final int total;
+  final int folders;
+  final VoidCallback onAdd;
+  final VoidCallback? onPlay;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Center(
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          colors: [
+            scheme.primaryContainer.withValues(alpha: 0.82),
+            scheme.surfaceContainerHigh,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(20),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Container(
-              width: 88, height: 88,
-              decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(24)),
-              child: Icon(icon, size: 42, color: scheme.onPrimaryContainer),
-            ),
-            const SizedBox(height: 16),
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.library_music_rounded, size: 29),
+            const SizedBox(height: 10),
             Text(
-              message,
-              textAlign: TextAlign.center,
+              'Biblioteca local',
               style: Theme.of(
                 context,
-              ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
             ),
-            const SizedBox(height: 20),
-            FilledButton(onPressed: onAction, child: Text(actionLabel)),
+            const SizedBox(height: 4),
+            Text(
+              '$total canciones  ·  $folders carpetas',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: onPlay,
+                  icon: const Icon(Icons.play_arrow_rounded),
+                  label: Text(compact ? 'Reproducir' : 'Reproducir colección'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onAdd,
+                  icon: const Icon(Icons.create_new_folder_outlined),
+                  label: const Text('Añadir carpeta'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+class _SongRow extends ConsumerWidget {
+  const _SongRow({
+    required this.track,
+    required this.queue,
+    required this.index,
+  });
+  final Track track;
+  final List<Track> queue;
+  final int index;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final isCurrent =
+        ref.watch(
+          audioPlayerControllerProvider.select((s) => s.currentTrack?.id),
+        ) ==
+        track.id;
+    final subtitle = '${track.artist}  ·  ${track.folderName}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+      child: Card(
+        margin: EdgeInsets.zero,
+        elevation: 0,
+        color: isCurrent
+            ? scheme.primaryContainer.withValues(alpha: 0.40)
+            : scheme.surfaceContainerLow,
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 5,
+          ),
+          onTap: () => ref
+              .read(audioPlayerControllerProvider.notifier)
+              .playQueue(queue, startIndex: index),
+          leading: TrackArtwork(track: track, size: 48),
+          title: Text(
+            track.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+            ),
+          ),
+          subtitle: Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Favorito',
+                icon: Icon(
+                  ref.watch(musicCollectionProvider).isFavorite(track)
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                ),
+                onPressed: () => ref
+                    .read(musicCollectionProvider.notifier)
+                    .toggleFavorite(track),
+              ),
+              IconButton(
+                tooltip: 'Más opciones',
+                icon: const Icon(Icons.more_vert_rounded),
+                onPressed: () =>
+                    showTrackCollectionActions(context, ref, track),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyLibrary extends StatelessWidget {
+  const _EmptyLibrary({
+    required this.title,
+    required this.description,
+    required this.actionLabel,
+    required this.onAction,
+  });
+  final String title;
+  final String description;
+  final String actionLabel;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.library_music_outlined,
+            size: 60,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(height: 14),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          Text(description, textAlign: TextAlign.center),
+          const SizedBox(height: 14),
+          FilledButton(onPressed: onAction, child: Text(actionLabel)),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Diálogo simple para escribir la ruta de una carpeta de música.
@@ -383,20 +593,22 @@ Future<void> _showAddFolderSheet(BuildContext context, WidgetRef ref) async {
     final notifier = ref.read(libraryControllerProvider.notifier);
     if (ref.read(libraryControllerProvider).isScanning) return;
     try {
-      final path = await getDirectoryPath(confirmButtonText: 'Seleccionar carpeta');
+      final path = await getDirectoryPath(
+        confirmButtonText: 'Seleccionar carpeta',
+      );
       if (path == null || !context.mounted) return;
       await notifier.waitUntilReady();
       await notifier.addFolder(path);
       if (!context.mounted) return;
       final result = ref.read(libraryControllerProvider);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(result.error ?? 'Carpeta añadida: $path'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error ?? 'Carpeta añadida: $path')),
+      );
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('No se pudo abrir la carpeta: $error'),
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo abrir la carpeta: $error')),
+      );
     }
     return;
   }

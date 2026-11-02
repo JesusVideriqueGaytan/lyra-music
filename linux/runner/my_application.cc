@@ -57,7 +57,7 @@ static void my_application_activate(GApplication* application) {
       "headerbar { min-height: 30px; padding: 0 6px; } "
       "headerbar button { min-height: 22px; min-width: 22px; padding: 2px; }",
       -1, nullptr);
-    gtk_style_context_add_provider_for_screen(gtk_widget_get_screen(window),
+    gtk_style_context_add_provider_for_screen(gtk_window_get_screen(window),
       GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     g_object_unref(css);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));

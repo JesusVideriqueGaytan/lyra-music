@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyra_music/core/theme/adaptive_theme.dart';
 import 'package:lyra_music/core/theme/theme_controller.dart';
 import 'package:lyra_music/app/router.dart';
+import 'package:lyra_music/core/settings/app_settings_controller.dart';
 
 class LyraApp extends ConsumerWidget {
   const LyraApp({super.key});
@@ -19,6 +20,7 @@ class LyraApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final themeState = ref.watch(themeControllerProvider);
+    final appSettings = ref.watch(appSettingsControllerProvider);
 
     // Dynamic Color: solo relevante si el usuario eligió la variante dinámica.
     return DynamicColorBuilder(
@@ -26,11 +28,12 @@ class LyraApp extends ConsumerWidget {
         // El esquema dinámico "real" lo decide adaptive_theme según variante.
         final dynamicScheme =
             (WidgetsBinding.instance.platformDispatcher.platformBrightness ==
-                    Brightness.dark)
-                ? darkDynamic
-                : lightDynamic;
+                Brightness.dark)
+            ? darkDynamic
+            : lightDynamic;
 
-        final lightTheme = themeState.variant == AppThemeVariant.dynamic &&
+        final lightTheme =
+            themeState.variant == AppThemeVariant.dynamic &&
                 lightDynamic != null
             ? AdaptiveTheme.fromScheme(lightDynamic)
             : AdaptiveTheme.build(
@@ -39,8 +42,8 @@ class LyraApp extends ConsumerWidget {
                 dynamicScheme: dynamicScheme,
               );
 
-        final darkTheme = themeState.variant == AppThemeVariant.dynamic &&
-                darkDynamic != null
+        final darkTheme =
+            themeState.variant == AppThemeVariant.dynamic && darkDynamic != null
             ? AdaptiveTheme.fromScheme(darkDynamic)
             : AdaptiveTheme.build(
                 AppThemeVariant.dark,
@@ -53,6 +56,15 @@ class LyraApp extends ConsumerWidget {
           routerConfig: router,
           theme: lightTheme,
           darkTheme: darkTheme,
+          builder: (context, child) {
+            final mediaQuery = MediaQuery.of(context);
+            return MediaQuery(
+              data: mediaQuery.copyWith(
+                textScaler: TextScaler.linear(appSettings.fontScale),
+              ),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
           // La variante elegida por el usuario controla el brightness:
           // claro => luz; oscuro/AMOLED/dinámico => seguimos al sistema.
           themeMode: switch (themeState.variant) {

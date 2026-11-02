@@ -1,7 +1,8 @@
-/// Pantalla de configuración de rendimiento de Lyra (Fase 1).
+/// Pantalla de configuración de rendimiento de Lyra.
 ///
-/// Permite ver el tier detectado, cambiar entre modo automático y manual,
-/// forzar un tier concreto y consultar la matriz de características activa.
+/// Simplifica la interacción para que el usuario entienda mejor la diferencia
+/// entre la lógica de selección (Automático / Manual / Personalizado) y el
+/// nivel base de rendimiento.
 library;
 
 import 'package:flutter/material.dart';
@@ -20,6 +21,8 @@ class PerformanceSettingsScreen extends ConsumerWidget {
     final state = ref.watch(performanceControllerProvider);
     final controller = ref.read(performanceControllerProvider.notifier);
     final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final uiMode = _uiModeFor(state.mode);
 
     return Scaffold(
       appBar: AppBar(
@@ -38,117 +41,140 @@ class PerformanceSettingsScreen extends ConsumerWidget {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         children: [
-          // --- Tarjeta de estado actual -----------------------------------
           _StatusCard(state: state, scheme: scheme),
-
           const SizedBox(height: 16),
-
-          // --- Selector de modo --------------------------------------------
-          Text('Modo de selección', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 8),
+          Text('Modo de rendimiento', style: textTheme.titleMedium),
+          const SizedBox(height: 6),
+          Text(
+            'Automático detecta el hardware. Manual te deja elegir un nivel fijo. '
+            'Personalizado servirá para desbloquear ajustes granulares.',
+            style: textTheme.bodySmall,
+          ),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final mode in PerformanceMode.values)
-                ChoiceChip(
-                  label: Text(_modeLabel(mode)),
-                  selected: state.mode == mode,
-                  onSelected: (_) => controller.setMode(mode),
-                ),
-            ],
-          ),
-
-          const SizedBox(height: 24),
-
-          // --- Selector de tier manual --------------------------------------
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Nivel de rendimiento',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+              ChoiceChip(
+                label: const Text('Automático'),
+                selected: uiMode == _UiMode.auto,
+                onSelected: (_) => controller.resetToAuto(),
               ),
-              if (state.mode == PerformanceMode.auto)
-                Icon(Icons.lock_outline, size: 18, color: scheme.outline),
+              ChoiceChip(
+                label: const Text('Manual'),
+                selected: uiMode == _UiMode.manual,
+                onSelected: (_) => controller.setTier(state.currentTier),
+              ),
+              ChoiceChip(
+                label: const Text('Personalizado'),
+                selected: uiMode == _UiMode.custom,
+                onSelected: (_) => controller.setMode(PerformanceMode.custom),
+              ),
             ],
           ),
-          if (state.mode == PerformanceMode.auto)
-            Padding(
-              padding: const EdgeInsets.only(top: 4, bottom: 8),
-              child: Text(
-                'En modo Automático el nivel lo decide la detección de '
-                'hardware. Elige un modo manual para forzarlo.',
-                style: Theme.of(context).textTheme.bodySmall,
+          const SizedBox(height: 24),
+          if (uiMode == _UiMode.manual) ...[
+            Text('Nivel de rendimiento', style: textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              'Elige la intensidad base de recursos que Lyra debe usar de forma fija.',
+              style: textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final tier in PerformanceTier.values)
+                  FilterChip(
+                    label: Text(tier.label),
+                    selected: state.currentTier == tier,
+                    onSelected: (_) => controller.setTier(tier),
+                  ),
+              ],
+            ),
+          ],
+          if (uiMode == _UiMode.auto) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'En Automático, Lyra toma decisiones según tu hardware para conservar el principio de ser ligera y adaptable.',
+                  style: textTheme.bodyMedium,
+                ),
               ),
             ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final tier in PerformanceTier.values)
-                FilterChip(
-                  label: Text(tier.label),
-                  selected: state.currentTier == tier,
-                  onSelected: (_) => controller.setTier(tier),
+          ],
+          if (uiMode == _UiMode.custom) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Personalizado', style: textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Aquí conviene desbloquear controles por característica (animaciones, blur, visualizador, caché, etc.). Por ahora Lyra usa el nivel actual como base visible, pero la siguiente iteración debe convertir esta sección en un personalizador granular real.',
+                      style: textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final tier in PerformanceTier.values)
+                          FilterChip(
+                            label: Text('Base ${tier.label}'),
+                            selected: state.currentTier == tier,
+                            onSelected: (_) => controller.setTier(tier),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
-            ],
-          ),
-
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
-
-          // --- Matriz de características activas -----------------------------
-          Text(
-            'Características activas',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+          Text('Características activas', style: textTheme.titleMedium),
           const SizedBox(height: 8),
           _FeaturesTable(features: state.features),
-
           const SizedBox(height: 24),
-
-          // --- Información de hardware detectada ------------------------------
           if (state.hardwareInfo != null) ...[
-            Text(
-              'Hardware detectado',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            Text('Hardware detectado', style: textTheme.titleMedium),
             const SizedBox(height: 8),
             _HardwareInfoTile(info: state.hardwareInfo!),
           ],
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => controller.enableBatterySaver(),
+        onPressed: controller.enableBatterySaver,
         icon: const Icon(Icons.battery_saver),
         label: const Text('Ahorro de batería'),
       ),
     );
   }
+}
 
-  String _modeLabel(PerformanceMode mode) {
-    switch (mode) {
-      case PerformanceMode.auto:
-        return 'Automático';
-      case PerformanceMode.low:
-        return 'Manual · Bajo';
-      case PerformanceMode.medium:
-        return 'Manual · Medio';
-      case PerformanceMode.high:
-        return 'Manual · Alto';
-      case PerformanceMode.ultra:
-        return 'Manual · Ultra';
-      case PerformanceMode.custom:
-        return 'Personalizado';
-    }
+enum _UiMode { auto, manual, custom }
+
+_UiMode _uiModeFor(PerformanceMode mode) {
+  switch (mode) {
+    case PerformanceMode.auto:
+      return _UiMode.auto;
+    case PerformanceMode.custom:
+      return _UiMode.custom;
+    case PerformanceMode.low:
+    case PerformanceMode.medium:
+    case PerformanceMode.high:
+    case PerformanceMode.ultra:
+      return _UiMode.manual;
   }
 }
 
-/// Tarjeta superior con el tier efectivo y avisos de carga/error.
 class _StatusCard extends StatelessWidget {
   const _StatusCard({required this.state, required this.scheme});
 
@@ -166,24 +192,22 @@ class _StatusCard extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  state.isLoading
-                      ? Icons.hourglass_top
-                      : Icons.speed,
+                  state.isLoading ? Icons.hourglass_top : Icons.speed,
                   color: scheme.primary,
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Nivel actual: ${state.currentTier.label}',
-                  style: Theme.of(context).textTheme.titleLarge,
+                Expanded(
+                  child: Text(
+                    'Nivel actual: ${state.currentTier.label}',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                 ),
-                if (state.isLoading) ...[
-                  const SizedBox(width: 12),
+                if (state.isLoading)
                   const SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                ],
               ],
             ),
             const SizedBox(height: 8),
@@ -219,18 +243,17 @@ class _StatusCard extends StatelessWidget {
   String _tierDescription(PerformanceTier tier) {
     switch (tier) {
       case PerformanceTier.low:
-        return 'Optimizado para dispositivos antiguos o con pocos recursos.';
+        return 'Optimizado para ahorrar recursos y batería.';
       case PerformanceTier.medium:
-        return 'Equilibrio entre rendimiento y calidad visual.';
+        return 'Equilibrio entre fluidez y consumo moderado.';
       case PerformanceTier.high:
-        return 'Alta calidad visual manteniendo buen rendimiento.';
+        return 'Apuesta por mejor experiencia visual y animaciones.';
       case PerformanceTier.ultra:
-        return 'Máxima calidad: blur, karaoke animado y lossless.';
+        return 'Máxima calidad disponible para hardware potente.';
     }
   }
 }
 
-/// Tabla resumen de las características del tier activo.
 class _FeaturesTable extends StatelessWidget {
   const _FeaturesTable({required this.features});
 
@@ -243,40 +266,52 @@ class _FeaturesTable extends StatelessWidget {
       ('Blur / BackdropFilter', features.canUseBlur ? 'Sí' : 'No'),
       ('Visualizador de audio', features.canUseVisualizer ? 'Sí' : 'No'),
       ('Letras sincronizadas', _lyricsLabel(features.lyricsMode)),
-      ('Ecualizador', features.equalizerBands == 0
-          ? 'Desactivado'
-          : '${features.equalizerBands} bandas'),
-      ('Streaming', '${features.streamingBitrateKbps} kbps'
-          '${features.canUseLossless ? ' + FLAC' : ''}'),
-      ('Caché máxima', features.cacheLimitMb.isInfinite
-          ? 'Ilimitada'
-          : '${features.cacheLimitMb.toInt()} MB'),
+      (
+        'Ecualizador',
+        features.equalizerBands == 0
+            ? 'Desactivado'
+            : '${features.equalizerBands} bandas',
+      ),
+      ('Streaming', '${features.streamingBitrateKbps} kbps'),
+      (
+        'Caché máxima',
+        features.cacheLimitMb.isInfinite
+            ? 'Ilimitada'
+            : '${features.cacheLimitMb.toInt()} MB',
+      ),
       ('Precarga', '${features.preloadSongs} canciones'),
       ('Transiciones', _transitionLabel(features.transitionStyle)),
       ('Calidad de imágenes', '${features.maxImageSizePx} px'),
     ];
 
     return Card(
-      child: Column(
-        children: [
-          for (final row in rows)
-            ListTile(
-              dense: true,
-              title: Text(row.$1),
-              trailing: Text(
-                row.$2,
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.primary,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          children: [
+            for (final row in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(row.$1)),
+                    const SizedBox(width: 12),
+                    Text(
+                      row.$2,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  String _lyricsLabel(LyricsMode mode) {
+  static String _lyricsLabel(LyricsMode mode) {
     switch (mode) {
       case LyricsMode.simpleText:
         return 'Texto simple';
@@ -287,12 +322,12 @@ class _FeaturesTable extends StatelessWidget {
     }
   }
 
-  String _transitionLabel(TransitionStyle style) {
+  static String _transitionLabel(TransitionStyle style) {
     switch (style) {
       case TransitionStyle.fade:
-        return 'Fade simple';
+        return 'Fundido';
       case TransitionStyle.slide:
-        return 'Slide';
+        return 'Deslizamiento';
       case TransitionStyle.zoomHero:
         return 'Zoom + Hero';
       case TransitionStyle.morphing:
@@ -301,7 +336,6 @@ class _FeaturesTable extends StatelessWidget {
   }
 }
 
-/// Detalle de la lectura cruda de hardware.
 class _HardwareInfoTile extends StatelessWidget {
   const _HardwareInfoTile({required this.info});
 
@@ -309,37 +343,51 @@ class _HardwareInfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ram = info.memoryGb > 0
-        ? '${info.memoryGb.toStringAsFixed(1)} GB'
-        : 'Desconocida';
-    final battery = info.batteryLevelPercent != null
-        ? '${info.batteryLevelPercent}% ${info.isCharging ? '(cargando)' : ''}'
-        : 'Sin batería (desktop)';
-
+    final rows = <(String, String)>[
+      ('Dispositivo', info.deviceModel),
+      ('Memoria RAM', '${info.memoryGb.toStringAsFixed(1)} GB'),
+      ('Núcleos de CPU', '${info.processorCount}'),
+      ('Pantalla', '${info.screenWidth} × ${info.screenHeight}'),
+      (
+        'Frecuencia',
+        info.refreshRateHz == 0
+            ? 'Desconocida'
+            : '${info.refreshRateHz.toStringAsFixed(0)} Hz',
+      ),
+      (
+        'Batería',
+        info.batteryLevelPercent == null
+            ? 'No disponible'
+            : '${info.batteryLevelPercent}%',
+      ),
+      ('Cargando', info.isCharging ? 'Sí' : 'No'),
+    ];
     return Card(
-      child: Column(
-        children: [
-          ListTile(
-            dense: true,
-            title: const Text('Dispositivo'),
-            trailing: Text(info.deviceModel),
-          ),
-          ListTile(
-            dense: true,
-            title: const Text('Memoria RAM'),
-            trailing: Text(ram),
-          ),
-          ListTile(
-            dense: true,
-            title: const Text('Núcleos de CPU'),
-            trailing: Text('${info.processorCount}'),
-          ),
-          ListTile(
-            dense: true,
-            title: const Text('Batería'),
-            trailing: Text(battery),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          children: [
+            for (final row in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(row.$1)),
+                    const SizedBox(width: 12),
+                    Flexible(
+                      child: Text(
+                        row.$2,
+                        textAlign: TextAlign.right,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

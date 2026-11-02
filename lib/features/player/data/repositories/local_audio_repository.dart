@@ -61,6 +61,8 @@ class LocalAudioRepository implements AudioRepository {
     final errors = <String>[];
     final tracks = <Track>[];
     var visited = 0;
+    // Una sola búsqueda de portada por carpeta para evitar I/O por canción.
+    final coverByDirectory = <String, String?>{};
 
     // Comprobación previa: carpeta inexistente o sin permisos => error claro
     // en la UI en lugar de una excepción cruda de dart:io.
@@ -81,8 +83,10 @@ class LocalAudioRepository implements AudioRepository {
     // Recorrido recursivo NO bloqueante (listen + await for) para no
     // congelar la UI en bibliotecas grandes.
     try {
-      await for (final entity
-          in directory.list(recursive: true, followLinks: false)) {
+      await for (final entity in directory.list(
+        recursive: true,
+        followLinks: false,
+      )) {
         if (tracks.length >= kMaxTracksPerScan) {
           errors.add(
             'Se alcanzó el límite de $kMaxTracksPerScan canciones; '
@@ -94,8 +98,9 @@ class LocalAudioRepository implements AudioRepository {
         visited++;
 
         final path = entity.path.toLowerCase();
-        final isAudio = kSupportedAudioExtensions
-            .any((ext) => path.endsWith(ext));
+        final isAudio = kSupportedAudioExtensions.any(
+          (ext) => path.endsWith(ext),
+        );
         if (!isAudio) continue;
 
         // Ocultamos artefactos temporales (.tmp, archivos ocultos de
@@ -103,7 +108,31 @@ class LocalAudioRepository implements AudioRepository {
         final name = path.split(Platform.pathSeparator).last;
         if (name.startsWith('.')) continue;
 
-        tracks.add(Track.fromFilePath(entity.path));
+        final basic = Track.fromFilePath(entity.path);
+        final folder = basic.directoryPath;
+        if (!coverByDirectory.containsKey(folder)) {
+          String? foundCover;
+          for (final coverName in const [
+            'cover.jpg',
+            'folder.jpg',
+            'front.jpg',
+            'cover.png',
+            'folder.png',
+          ]) {
+            final candidate = File(
+              '$folder${Platform.pathSeparator}$coverName',
+            );
+            if (await candidate.exists()) {
+              foundCover = candidate.path;
+              break;
+            }
+          }
+          coverByDirectory[folder] = foundCover;
+        }
+        final coverPath = coverByDirectory[folder];
+        tracks.add(
+          coverPath == null ? basic : basic.copyWith(coverPath: coverPath),
+        );
       }
     } on FileSystemException catch (e) {
       // Subcarpetas protegidas (ej. Android/sdcard restringida): registramos
@@ -113,8 +142,9 @@ class LocalAudioRepository implements AudioRepository {
 
     // Orden estable por título para que la biblioteca no cambie de orden
     // entre escaneos.
-    tracks.sort((a, b) =>
-        a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    tracks.sort(
+      (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+    );
 
     return ScanResult(
       tracks: tracks,
@@ -137,8 +167,9 @@ class LocalAudioRepository implements AudioRepository {
       }
     }
 
-    allTracks.sort((a, b) =>
-        a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    allTracks.sort(
+      (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+    );
     return allTracks;
   }
 
@@ -174,8 +205,8 @@ class LocalAudioRepository implements AudioRepository {
     final candidates = <String>[];
 
     try {
-      final home = Platform.environment['HOME'] ??
-          Platform.environment['USERPROFILE'];
+      final home =
+          Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
       if (home != null) {
         candidates.add('$home${Platform.pathSeparator}Music');
         candidates.add(home);

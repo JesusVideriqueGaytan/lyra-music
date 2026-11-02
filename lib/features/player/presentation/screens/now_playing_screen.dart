@@ -18,6 +18,10 @@ import 'package:lyra_music/core/performance/performance_controller.dart';
 import 'package:lyra_music/features/player/presentation/controllers/audio_player_controller.dart';
 import 'package:lyra_music/features/player/presentation/widgets/player_controls.dart';
 import 'package:lyra_music/features/player/presentation/widgets/progress_bar.dart';
+import 'package:lyra_music/features/library/presentation/widgets/track_artwork.dart';
+import 'package:lyra_music/features/player/domain/models/track.dart';
+import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
+import 'package:lyra_music/features/library/presentation/widgets/collection_actions.dart';
 
 class NowPlayingScreen extends ConsumerWidget {
   const NowPlayingScreen({super.key});
@@ -65,14 +69,11 @@ class NowPlayingScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
+      extendBodyBehindAppBar: false,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text(
-          currentTrack.album,
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
+        title: const Text('Reproduciendo ahora'),
         leading: IconButton(
           tooltip: 'Contraer',
           // go-pop: si el usuario llegó desde el MiniPlayer, regresa a la
@@ -81,72 +82,162 @@ class NowPlayingScreen extends ConsumerWidget {
               context.canPop() ? context.pop() : context.go('/library'),
           icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 28),
         ),
-        actions: <Widget>[
-          IconButton(
-            tooltip: 'Cola de reproducción',
-            onPressed: () => showQueueSheet(context, ref),
-            icon: const Icon(Icons.queue_music_rounded),
-          ),
-        ],
       ),
       // Banner de error de reproducción: se muestra como SnackBar persistente
       // mientras exista (el controller lo limpia al reproducir otra pista).
       bottomNavigationBar: error != null
           ? MaterialBanner(
-                content: Text(error),
-                backgroundColor: scheme.errorContainer,
-                actions: <Widget>[
-                  TextButton(
-                    onPressed: () => context.go('/library'),
-                    child: const Text('Buscar otra canción'),
-                  ),
-                ],
-              )
+              content: Text(error),
+              backgroundColor: scheme.errorContainer,
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => ref
+                      .read(audioPlayerControllerProvider.notifier)
+                      .playAt(
+                        ref.read(audioPlayerControllerProvider).currentIndex,
+                      ),
+                  child: const Text('Reintentar'),
+                ),
+                TextButton(
+                  onPressed: () => context.go('/library'),
+                  child: const Text('Buscar otra canción'),
+                ),
+              ],
+            )
           : null,
       body: Stack(
         fit: StackFit.expand,
-        children: <Widget>[
+        children: [
           _AdaptiveBackground(animate: animate),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 48, 24, 16),
-              child: Column(
-                children: <Widget>[
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        // En pantallas anchas (desktop/landscape) limitamos
-                        // la portada al menor de: alto disponible o el tope
-                        // del tier convertido a px lógicos (~px * 0.66).
-                        final tierCap = (features.maxImageSizePx * 0.66)
-                            .roundToDouble();
-                        final side = constraints.biggest.shortestSide.clamp(
-                          180.0,
-                          tierCap,
-                        );
-                        return Center(
-                          child: _CoverArt(
-                            size: side,
-                            animate: animate,
-                            trackTitle: currentTrack.title,
+            child: LayoutBuilder(
+              builder: (context, bounds) {
+                final wide = bounds.maxWidth >= 760;
+                final side =
+                    (wide
+                            ? (bounds.maxHeight * 0.72)
+                            : (bounds.maxHeight * 0.48))
+                        .clamp(140.0, wide ? 440.0 : 340.0);
+                final artwork = _CoverArt(
+                  size: side,
+                  animate: animate,
+                  track: currentTrack,
+                );
+                final details = ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'REPRODUCIENDO AHORA',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              letterSpacing: 1.8,
+                              color: scheme.primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
+                      const SizedBox(height: 18),
+                      _TrackTitles(
+                        title: currentTrack.title,
+                        artist: currentTrack.artist,
+                        animate: animate,
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        currentTrack.album == 'YouTube Music'
+                            ? 'Canción'
+                            : currentTrack.album,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => ref
+                                .read(musicCollectionProvider.notifier)
+                                .toggleFavorite(currentTrack),
+                            icon: Icon(
+                              ref
+                                      .watch(musicCollectionProvider)
+                                      .isFavorite(currentTrack)
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
+                            ),
+                            label: Text(
+                              ref
+                                      .watch(musicCollectionProvider)
+                                      .isFavorite(currentTrack)
+                                  ? 'En favoritos'
+                                  : 'Me gusta',
+                            ),
                           ),
-                        );
-                      },
+                          OutlinedButton.icon(
+                            onPressed: () => showAddToPlaylistDialog(
+                              context,
+                              ref,
+                              currentTrack,
+                            ),
+                            icon: const Icon(Icons.playlist_add_rounded),
+                            label: const Text('Añadir a lista'),
+                          ),
+                          IconButton.outlined(
+                            tooltip: 'Más opciones de la canción',
+                            onPressed: () => showTrackCollectionActions(
+                              context,
+                              ref,
+                              currentTrack,
+                            ),
+                            icon: const Icon(Icons.more_horiz_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      const ProgressBar(),
+                      const SizedBox(height: 12),
+                      const PlayerControls(),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: () => showQueueSheet(context, ref),
+                        icon: const Icon(Icons.queue_music_rounded),
+                        label: const Text('Ver cola de reproducción'),
+                      ),
+                    ],
+                  ),
+                );
+                if (wide) {
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(28, 16, 28, 24),
+                    child: Row(
+                      children: [
+                        Expanded(child: Center(child: artwork)),
+                        const SizedBox(width: 26),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            child: Center(child: details),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [artwork, const SizedBox(height: 24), details],
                     ),
                   ),
-                  // Título y artista con animación de cambio de pista solo
-                  // si el hardware lo permite.
-                  _TrackTitles(
-                    title: currentTrack.title,
-                    artist: currentTrack.artist,
-                    animate: animate,
-                  ),
-                  const SizedBox(height: 16),
-                  const ProgressBar(),
-                  const SizedBox(height: 8),
-                  const PlayerControls(),
-                ],
-              ),
+                );
+              },
             ),
           ),
         ],
@@ -191,45 +282,24 @@ class _CoverArt extends StatelessWidget {
   const _CoverArt({
     required this.size,
     required this.animate,
-    required this.trackTitle,
+    required this.track,
   });
 
   final double size;
   final bool animate;
-  final String trackTitle;
+  final Track track;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final art = Container(
-      width: size,
-      height: size,
-      key: ValueKey(trackTitle),
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(animate ? 20 : 8),
-        boxShadow: animate
-            ? <BoxShadow>[
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 24,
-                  offset: const Offset(0, 12),
-                ),
-              ]
-            : null,
-      ),
-      child: Icon(
-        Icons.music_note_rounded,
-        size: size * 0.4,
-        color: scheme.onPrimaryContainer,
-      ),
+    final art = TrackArtwork(
+      track: track,
+      size: size,
+      radius: animate ? 20 : 10,
     );
-
     if (!animate) return art;
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 350),
-      switchInCurve: Curves.easeOutCubic,
-      child: art,
+      duration: const Duration(milliseconds: 260),
+      child: Container(key: ValueKey(track.id), child: art),
     );
   }
 }

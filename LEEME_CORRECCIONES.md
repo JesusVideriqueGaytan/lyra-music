@@ -69,3 +69,18 @@ flutter run -d linux
 En Linux debe estar disponible el entorno de compilación Flutter desktop (CMake, Ninja, clang, pkg-config, GTK3 dev). Revisa primero que la carpeta elegida contenga `.mp3`, `.flac`, `.ogg`, `.wav` o `.m4a`. Evita hot reload para cambios de plugins nativos.
 
 **Validación pendiente:** en este entorno no está instalado `flutter` ni `dart`, por lo que los cambios no están compilados ni ensayados en Linux. Si `flutter pub get` encuentra un conflicto de versiones, conserva el mensaje para ajustar las restricciones. El archivo `pubspec.lock` original queda incluido como base y se regenerará con `flutter pub get`.
+
+## Hotfix 2.5.1 — fallos reportados tras primera compilación
+
+- `linux/runner/my_application.cc`: se cambió `gtk_widget_get_screen(window)` por `gtk_window_get_screen(window)` porque `window` es `GtkWindow*`. Resuelve el error C++ «no matching function for call to gtk_widget_get_screen».
+- `test/widget_test.dart`: la aserción ahora busca el título real `Tu música` mostrado por `LibraryScreen`, en lugar del título anterior `Biblioteca`; se mantiene la verificación de `MaterialApp` y del `AppBar` en el segundo test.
+- `flutter analyze` ya pasó sin incidencias en el equipo del usuario antes del hotfix. Flutter y el SDK de compilación GTK no están disponibles en este entorno, por lo que queda pendiente ejecutar de nuevo pruebas y compilación en CachyOS.
+
+En la raíz del proyecto actualizado:
+
+```bash
+flutter test
+flutter run -d linux
+```
+
+Si el sistema de archivos aún tiene una compilación anterior, ejecuta `flutter clean && flutter pub get` antes de repetir.

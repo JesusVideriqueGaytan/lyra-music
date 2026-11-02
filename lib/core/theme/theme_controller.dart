@@ -16,10 +16,7 @@ const String _kThemeKey = 'lyra_theme_variant';
 
 /// Estado del sistema de temas.
 class ThemeState {
-  const ThemeState({
-    required this.variant,
-    required this.seedColor,
-  });
+  const ThemeState({required this.variant, required this.seedColor});
 
   /// Variante seleccionada por el usuario.
   final AppThemeVariant variant;
@@ -76,8 +73,9 @@ class ThemeController extends Notifier<ThemeState> {
 }
 
 /// Provider principal del controlador de tema.
-final themeControllerProvider =
-    NotifierProvider<ThemeController, ThemeState>(ThemeController.new);
+final themeControllerProvider = NotifierProvider<ThemeController, ThemeState>(
+  ThemeController.new,
+);
 
 /// Atajo: resuelve el [ThemeData] efectivo desde el estado actual.
 ///

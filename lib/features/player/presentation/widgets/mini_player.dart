@@ -1,7 +1,7 @@
 /// MiniPlayer persistente en la parte inferior de la pantalla.
 ///
-/// Diseñado como widget "flotante" que se superpone al contenido de cualquier
-/// ruta (se instala en el `builder` de GoRouter, ver `app/router.dart`).
+/// Ocupa espacio dentro de la estructura de navegación para que no tape
+/// las pantallas ni los botones inferiores.
 /// Reglas de adaptación por tier:
 ///  - Fondo con blur solo si [AdaptiveFeatures.canUseBlur] (high/ultra).
 ///  - Animación de entrada/expandir solo si [AdaptiveFeatures.canUseAnimations].
@@ -19,6 +19,8 @@ import 'package:lyra_music/core/performance/performance_controller.dart';
 import 'package:lyra_music/core/performance/performance_tier.dart';
 import 'package:lyra_music/features/player/presentation/controllers/audio_player_controller.dart';
 import 'package:lyra_music/features/player/presentation/widgets/progress_bar.dart';
+import 'package:lyra_music/features/library/presentation/widgets/track_artwork.dart';
+import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
 
 class MiniPlayer extends ConsumerWidget {
   const MiniPlayer({super.key});
@@ -76,9 +78,10 @@ class MiniPlayer extends ConsumerWidget {
                     child: Row(
                       children: <Widget>[
                         // Portada (placeholder con nota musical si no hay carátula).
-                        _MiniCover(
+                        TrackArtwork(
+                          track: currentTrack,
                           size: coverDisplaySize,
-                          imageResizePx: features.maxImageSizePx,
+                          radius: 9,
                         ),
                         const SizedBox(width: 10),
                         Expanded(
@@ -103,6 +106,26 @@ class MiniPlayer extends ConsumerWidget {
                             ],
                           ),
                         ),
+                        if (MediaQuery.sizeOf(context).width >= 640)
+                          IconButton(
+                            tooltip: 'Agregar o quitar de favoritos',
+                            icon: Icon(
+                              ref
+                                      .watch(musicCollectionProvider)
+                                      .isFavorite(currentTrack)
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
+                            ),
+                            onPressed: () => ref
+                                .read(musicCollectionProvider.notifier)
+                                .toggleFavorite(currentTrack),
+                          ),
+                        if (MediaQuery.sizeOf(context).width >= 540)
+                          IconButton(
+                            tooltip: 'Anterior',
+                            onPressed: notifier.previous,
+                            icon: const Icon(Icons.skip_previous_rounded),
+                          ),
                         IconButton(
                           tooltip: playing ? 'Pausar' : 'Reproducir',
                           onPressed: notifier.togglePlayPause,
@@ -152,34 +175,6 @@ class _MiniPlayerBackground extends StatelessWidget {
           color: scheme.surface.withValues(alpha: 0.72),
           child: child,
         ),
-      ),
-    );
-  }
-}
-
-/// Miniatura cuadrada de la portada. En Fase 2 todavía no extraemos
-/// carátulas ID3, así que mostramos un placeholder consistente con el tema.
-class _MiniCover extends StatelessWidget {
-  const _MiniCover({required this.size, required this.imageResizePx});
-
-  final double size;
-  final int imageResizePx;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Icon(
-        Icons.music_note_rounded,
-        size: size * 0.55,
-        color: scheme.onPrimaryContainer,
       ),
     );
   }

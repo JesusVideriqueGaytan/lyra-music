@@ -65,28 +65,49 @@ void main() {
       expect(TierFeatureMatrix.classifyHardware(hw), PerformanceTier.low);
     });
 
-    test('Hardware desconocido (ceros) no revienta: devuelve un tier válido',
-        () {
-      const hw = HardwareInfo(
-        totalMemoryBytes: 0,
-        processorCount: 0,
-        screenWidth: 0,
-        screenHeight: 0,
-        refreshRateHz: 0,
-      );
-      final tier = TierFeatureMatrix.classifyHardware(hw);
-      expect(PerformanceTier.values, contains(tier));
-    });
+    test(
+      'Hardware desconocido (ceros) no revienta: devuelve un tier válido',
+      () {
+        const hw = HardwareInfo(
+          totalMemoryBytes: 0,
+          processorCount: 0,
+          screenWidth: 0,
+          screenHeight: 0,
+          refreshRateHz: 0,
+        );
+        final tier = TierFeatureMatrix.classifyHardware(hw);
+        expect(PerformanceTier.values, contains(tier));
+      },
+    );
   });
 
   test('Batería: 20% conserva tier; 19% limita salvo al cargar', () {
-    const hw = HardwareInfo(totalMemoryBytes: 16 * 1024 * 1024 * 1024,
-      processorCount: 12, screenWidth: 3840, screenHeight: 2160,
-      refreshRateHz: 120, batteryLevelPercent: 20);
+    const hw = HardwareInfo(
+      totalMemoryBytes: 16 * 1024 * 1024 * 1024,
+      processorCount: 12,
+      screenWidth: 3840,
+      screenHeight: 2160,
+      refreshRateHz: 120,
+      batteryLevelPercent: 20,
+    );
     expect(TierFeatureMatrix.classifyHardware(hw), PerformanceTier.ultra);
-    expect(TierFeatureMatrix.classifyHardware(hw.copyWith(batteryLevelPercent: 19)), PerformanceTier.low);
-    expect(TierFeatureMatrix.classifyHardware(hw.copyWith(batteryLevelPercent: 19, isCharging: true)), PerformanceTier.ultra);
-    expect(TierFeatureMatrix.resolveTier(mode: PerformanceMode.high, detectedTier: PerformanceTier.low), PerformanceTier.high);
+    expect(
+      TierFeatureMatrix.classifyHardware(hw.copyWith(batteryLevelPercent: 19)),
+      PerformanceTier.low,
+    );
+    expect(
+      TierFeatureMatrix.classifyHardware(
+        hw.copyWith(batteryLevelPercent: 19, isCharging: true),
+      ),
+      PerformanceTier.ultra,
+    );
+    expect(
+      TierFeatureMatrix.resolveTier(
+        mode: PerformanceMode.high,
+        detectedTier: PerformanceTier.low,
+      ),
+      PerformanceTier.high,
+    );
   });
 
   group('AdaptiveFeatures.fromTier (matriz de características)', () {

@@ -20,15 +20,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 class _StubHardwareDetector implements HardwareDetector {
   @override
   Future<HardwareInfo> readHardwareInfo() async => const HardwareInfo(
-        totalMemoryBytes: 8 * 1024 * 1024 * 1024,
-        processorCount: 8,
-        screenWidth: 1920,
-        screenHeight: 1080,
-        refreshRateHz: 60,
-        batteryLevelPercent: 85,
-        isCharging: false,
-        deviceModel: 'test-stub',
-      );
+    totalMemoryBytes: 8 * 1024 * 1024 * 1024,
+    processorCount: 8,
+    screenWidth: 1920,
+    screenHeight: 1080,
+    refreshRateHz: 60,
+    batteryLevelPercent: 85,
+    isCharging: false,
+    deviceModel: 'test-stub',
+  );
 
   @override
   Future<PerformanceTier> detectTier() async => PerformanceTier.high;
@@ -67,13 +67,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    // La app debe mostrar una MaterialApp y la biblioteca.
+    // Inicio es la pantalla predeterminada de la experiencia híbrida.
     expect(find.byType(MaterialApp), findsOneWidget);
-    expect(find.text('Biblioteca'), findsWidgets);
+    expect(find.text('TU UNIVERSO MUSICAL'), findsOneWidget);
   });
 
-  testWidgets('LyraApp shows the library screen initially',
-      (WidgetTester tester) async {
+  testWidgets('LyraApp shows the home screen initially', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -87,7 +88,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    // El AppBar de la pantalla inicial debe ser visible.
+    // El AppBar de inicio debe ser visible.
     expect(find.byType(AppBar), findsOneWidget);
+    expect(find.text('Inicio'), findsWidgets);
   });
 }

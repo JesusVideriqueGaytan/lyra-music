@@ -190,7 +190,10 @@ class LibraryController extends Notifier<LibraryState> {
     try {
       final directory = Directory(path);
       if (!await directory.exists()) {
-        throw FileSystemException('La carpeta no existe o no es accesible', path);
+        throw FileSystemException(
+          'La carpeta no existe o no es accesible',
+          path,
+        );
       }
       // Comprobar acceso antes de guardar; conservar la selección exacta.
       await directory.list(followLinks: false).take(1).drain<void>();
@@ -208,17 +211,22 @@ class LibraryController extends Notifier<LibraryState> {
       state = state.copyWith(
         folders: <String>{...state.folders, selectedPath}.toList(),
         tracks: merged.values.toList()
-          ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase())),
+          ..sort(
+            (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+          ),
         isScanning: false,
         clearFolderFilter: true,
         error: result.errors.isNotEmpty
             ? result.errors.first
             : result.tracks.isEmpty
-                ? 'La carpeta se guardó, pero no contiene archivos de audio compatibles.'
-                : null,
+            ? 'La carpeta se guardó, pero no contiene archivos de audio compatibles.'
+            : null,
       );
     } catch (e) {
-      state = state.copyWith(isScanning: false, error: 'No se pudo añadir la carpeta: $e');
+      state = state.copyWith(
+        isScanning: false,
+        error: 'No se pudo añadir la carpeta: $e',
+      );
     }
   }
 
