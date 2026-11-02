@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
 import 'package:lyra_music/features/player/domain/models/track.dart';
+import 'package:lyra_music/features/downloads/desktop_download.dart';
 
 /// Menú reutilizable para favoritos y listas. La sesión de usuario no es
 /// necesaria para ninguna de estas funciones locales.
@@ -66,6 +67,63 @@ Future<void> showTrackCollectionActions(
       },
     ),
   );
+}
+
+/// Acciones contextuales ancladas al botón; evitan una hoja enorme en escritorio.
+class TrackActionsMenu extends ConsumerWidget {
+  const TrackActionsMenu({super.key, required this.track});
+  final Track track;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final favorite = ref.watch(musicCollectionProvider).isFavorite(track);
+    return PopupMenuButton<String>(
+      tooltip: 'Opciones de la canción',
+      icon: const Icon(Icons.more_horiz_rounded),
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: 'favorite',
+          child: ListTile(
+            dense: true,
+            leading: Icon(
+              favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+            ),
+            title: Text(
+              favorite ? 'Quitar de favoritos' : 'Añadir a favoritos',
+            ),
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'playlist',
+          child: ListTile(
+            dense: true,
+            leading: Icon(Icons.playlist_add_rounded),
+            title: Text('Añadir a una lista'),
+          ),
+        ),
+        if (supportsDesktopDownloads && track.id.startsWith('ytmusic:'))
+          const PopupMenuItem(
+            value: 'download',
+            child: ListTile(
+              dense: true,
+              leading: Icon(Icons.download_rounded),
+              title: Text('Guardar audio autorizado'),
+            ),
+          ),
+      ],
+      onSelected: (action) {
+        if (action == 'favorite') {
+          ref.read(musicCollectionProvider.notifier).toggleFavorite(track);
+        } else if (action == 'playlist') {
+          showAddToPlaylistDialog(context, ref, track);
+        } else if (action == 'download') {
+          showPermittedDownloadDialog(context, track);
+        }
+      },
+    );
+  }
 }
 
 Future<void> showAddToPlaylistDialog(

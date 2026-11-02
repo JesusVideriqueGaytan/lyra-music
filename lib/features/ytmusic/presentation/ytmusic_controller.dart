@@ -9,6 +9,7 @@ class YtMusicState {
     this.connected = false,
     this.loading = false,
     this.results = const [],
+    this.artists = const [],
     this.playlists = const [],
     this.playlistSongs = const [],
     this.selectedPlaylistId,
@@ -18,6 +19,7 @@ class YtMusicState {
   final bool connected;
   final bool loading;
   final List<YtMusicSong> results;
+  final List<YtMusicArtist> artists;
   final List<YtMusicPlaylist> playlists;
   final List<YtMusicSong> playlistSongs;
   final String? selectedPlaylistId;
@@ -36,6 +38,14 @@ class YtMusicController extends Notifier<YtMusicState> {
     return const YtMusicState();
   }
 
+  void clearSearch() {
+    ++_generation;
+    state = YtMusicState(
+      connected: _session != null,
+      playlists: state.playlists,
+    );
+  }
+
   Future<void> search(String query) async {
     final token = ++_generation;
     if (query.trim().isEmpty) {
@@ -52,7 +62,7 @@ class YtMusicController extends Notifier<YtMusicState> {
       playlists: state.playlists,
     );
     try {
-      final songs = await const YtMusicClient().search(
+      final catalog = await const YtMusicClient().searchCatalog(
         query,
         session: _session,
       );
@@ -60,7 +70,8 @@ class YtMusicController extends Notifier<YtMusicState> {
       state = YtMusicState(
         connected: _session != null,
         query: query,
-        results: songs,
+        results: catalog.songs,
+        artists: catalog.artists,
         playlists: state.playlists,
       );
     } catch (e) {

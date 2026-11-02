@@ -26,6 +26,8 @@ import 'package:lyra_music/features/home/presentation/home_screen.dart';
 import 'package:lyra_music/features/accounts/presentation/accounts_screen.dart';
 import 'package:lyra_music/features/library/presentation/screens/my_music_screen.dart';
 import 'package:lyra_music/features/library/presentation/screens/listening_statistics_screen.dart';
+import 'package:lyra_music/features/ytmusic/presentation/artist_screen.dart';
+import 'package:lyra_music/features/player/domain/models/track.dart';
 
 /// Provider del router: instancia única mientras viva el ProviderScope.
 final routerProvider = Provider<GoRouter>((ref) {
@@ -58,12 +60,35 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/my-music',
             name: 'my-music',
-            builder: (context, state) => const MyMusicScreen(),
+            builder: (context, state) =>
+                const LibraryScreen(showCollectionInitially: true),
+          ),
+          GoRoute(
+            path: '/album',
+            name: 'artist-album',
+            builder: (context, state) => state.extra is ArtistAlbumArgs
+                ? ArtistAlbumScreen(args: state.extra! as ArtistAlbumArgs)
+                : const Scaffold(
+                    body: Center(child: Text('Selecciona un álbum.')),
+                  ),
           ),
           GoRoute(
             path: '/statistics',
             name: 'statistics',
             builder: (context, state) => const ListeningStatisticsScreen(),
+          ),
+          GoRoute(
+            path: '/artist',
+            name: 'artist',
+            builder: (context, state) => state.extra is Track
+                ? ArtistScreen(seed: state.extra! as Track)
+                : const Scaffold(
+                    body: Center(
+                      child: Text(
+                        'Selecciona una canción para ver su artista.',
+                      ),
+                    ),
+                  ),
           ),
           GoRoute(
             path: '/library',
@@ -250,15 +275,9 @@ class _MiniPlayerScaffold extends StatelessWidget {
                   _NavItem(
                     icon: Icons.library_music_rounded,
                     title: 'Biblioteca',
-                    selected: currentPath == '/library',
+                    selected:
+                        currentPath == '/library' || currentPath == '/my-music',
                     onTap: () => context.go('/library'),
-                  ),
-                  const SizedBox(height: 6),
-                  _NavItem(
-                    icon: Icons.favorite_border_rounded,
-                    title: 'Mi música',
-                    selected: currentPath == '/my-music',
-                    onTap: () => context.go('/my-music'),
                   ),
                   const SizedBox(height: 6),
                   _NavItem(

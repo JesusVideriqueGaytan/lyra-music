@@ -104,6 +104,19 @@ class YtMusicAudioResolver {
     }
   }
 
+  /// Para almacenamiento propio autorizado, solo adaptador Dart.
+  /// No requiere herramientas instaladas ni usa cookies; no sortea restricciones.
+  Future<ResolvedAudioStream> resolveWithoutExternal(String videoId) async {
+    if (!RegExp(r'^[a-zA-Z0-9_-]{11}$').hasMatch(videoId)) {
+      throw const UnavailableAudioException('ID de contenido no válido.');
+    }
+    try {
+      return await _fromExplode(videoId);
+    } catch (_) {
+      return _fromExplode(videoId, alternativeClient: true);
+    }
+  }
+
   /// Alternativa SOLO para escritorio con yt-dlp instalado por el usuario.
   /// No ejecuta shell, no usa cookies y no descarga ficheros. Usamos URL e
   /// indicadores de cabeceras devueltos por yt-dlp, nunca su salida en logs.
@@ -172,35 +185,50 @@ class YtMusicAudioResolver {
     }
   }
 
+  /// En escritorio preferimos el extractor actualizado del sistema, cuando
+  /// exista. El adaptador Dart permanece como respaldo y como ruta móvil.
+  /// Ninguna estrategia garantiza acceso a flujos con restricciones del origen.
   Future<ResolvedAudioStream> resolve(YtMusicSong song) async {
     if (!RegExp(r'^[\w-]{11}$').hasMatch(song.videoId)) {
       throw const UnavailableAudioException('ID de canción no válido.');
     }
-    String? firstError;
+    final failures = <String>[];
+    if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
+      try {
+        final extracted = await _fromYtDlp(song.videoId);
+        final status = await probe(extracted);
+        if (status == 200 || status == 206) return extracted;
+        failures.add(audioHttpFailureMessage(status));
+      } catch (e) {
+        failures.add(
+          e is UnavailableAudioException
+              ? e.reason
+              : 'El extractor de escritorio no obtuvo audio utilizable.',
+        );
+      }
+    }
     try {
       return await _fromExplode(song.videoId);
     } catch (e) {
-      firstError = e is UnavailableAudioException
-          ? e.reason
-          : 'No fue posible obtener el enlace de audio de esta canción.';
+      failures.add(
+        e is UnavailableAudioException
+            ? e.reason
+            : 'No fue posible resolver la fuente primaria.',
+      );
     }
-    // Clientes alternativos pueden publicar variantes diferentes. Sigue
-    // siendo experimental: no elimina los requisitos de tokens del origen.
     try {
       return await _fromExplode(song.videoId, alternativeClient: true);
-    } catch (_) {
-      // Continuar al respaldo de escritorio, sin copiar URL firmadas a logs.
-    }
-    try {
-      final alternate = await _fromYtDlp(song.videoId);
-      final status = await probe(alternate);
-      if (status == 200 || status == 206) return alternate;
-      throw UnavailableAudioException(audioHttpFailureMessage(status));
     } catch (e) {
-      final alternateError = e is UnavailableAudioException
-          ? e.reason
-          : 'El extractor alternativo no pudo verificar el audio.';
-      throw UnavailableAudioException('$firstError $alternateError');
+      failures.add(
+        e is UnavailableAudioException
+            ? e.reason
+            : 'La fuente alternativa tampoco devolvió audio utilizable.',
+      );
     }
+    // Mantener mensajes breves y sin enlaces firmados, cookies o tokens.
+    throw UnavailableAudioException(
+      'No se encontró un flujo que el servidor permitiera reproducir. '
+      '${failures.isNotEmpty ? failures.first : 'Origen no disponible.'}',
+    );
   }
 }

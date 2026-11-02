@@ -32,6 +32,7 @@ class Track {
     this.trackNumber,
     this.year,
     this.artworkUrl,
+    this.artistId,
   });
 
   /// Identificador estable: usamos la ruta absoluta porque es única en el
@@ -68,6 +69,9 @@ class Track {
 
   /// URL pública de la portada cuando la pista proviene de un catálogo permitido.
   final String? artworkUrl;
+
+  /// Canal del artista en el proveedor, cuando está disponible.
+  final String? artistId;
 
   /// Fuente remota permitida; los archivos descargados vuelven a ser locales.
   bool get isRemote => Uri.tryParse(filePath)?.scheme == 'https';
@@ -136,6 +140,7 @@ class Track {
       'trackNumber': trackNumber,
       'year': year,
       'artworkUrl': artworkUrl,
+      'artistId': artistId,
     };
   }
 
@@ -154,6 +159,7 @@ class Track {
       trackNumber: map['trackNumber'] as int?,
       year: map['year'] as int?,
       artworkUrl: map['artworkUrl'] as String?,
+      artistId: map['artistId'] as String?,
     );
   }
 
@@ -169,6 +175,7 @@ class Track {
     int? trackNumber,
     int? year,
     String? artworkUrl,
+    String? artistId,
   }) {
     return Track(
       id: id,
@@ -182,6 +189,7 @@ class Track {
       trackNumber: trackNumber ?? this.trackNumber,
       year: year ?? this.year,
       artworkUrl: artworkUrl ?? this.artworkUrl,
+      artistId: artistId ?? this.artistId,
     );
   }
 

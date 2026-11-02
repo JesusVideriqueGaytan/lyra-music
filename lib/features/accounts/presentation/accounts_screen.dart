@@ -2,7 +2,10 @@
 /// No guarda ni exporta cabeceras/cookies; sesión solo en memoria.
 library;
 
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
+import 'package:lyra_music/shared/widgets/lyra_section_banner.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:lyra_music/features/player/presentation/controllers/audio_player_controller.dart';
 import 'package:lyra_music/features/player/domain/models/track.dart';
 import 'package:lyra_music/features/ytmusic/data/ytmusic_client.dart';
+import 'package:lyra_music/features/accounts/youtube/youtube_playlist_controller.dart';
 import 'package:lyra_music/features/ytmusic/presentation/ytmusic_controller.dart';
 
 class AccountsScreen extends ConsumerStatefulWidget {
@@ -57,12 +61,11 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
       final error = ref.read(audioPlayerControllerProvider).error;
       if (error != null) setState(() => _playError = error);
     } catch (_) {
-      if (mounted) {
+      if (mounted)
         setState(
           () => _playError =
               'Esta pista no está disponible para reproducirse en Lyra.',
         );
-      }
     } finally {
       if (mounted) setState(() => _playingId = null);
     }
@@ -85,6 +88,13 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         children: [
+          const LyraSectionBanner(
+            icon: Icons.account_circle_outlined,
+            eyebrow: 'CUENTAS',
+            title: 'Tus servicios conectados',
+            subtitle: 'Mantén el control de tus datos y sesiones.',
+          ),
+          const SizedBox(height: 18),
           Text('Tu música, tus cuentas', style: theme.textTheme.headlineSmall),
           const SizedBox(height: 10),
           const Text(
@@ -103,6 +113,8 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
             ),
           ),
           const SizedBox(height: 12),
+          const _GoogleYouTubeAccountCard(),
+          const SizedBox(height: 14),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(18),
@@ -115,7 +127,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Sincronizar biblioteca en línea',
+                          'YouTube Music · método experimental',
                           style: theme.textTheme.titleLarge,
                         ),
                       ),
@@ -127,7 +139,7 @@ class _AccountsScreenState extends ConsumerState<AccountsScreen> {
                   Text(
                     state.connected
                         ? 'Sesión conectada en este dispositivo.'
-                        : 'Conexión avanzada de solo lectura. Usa datos temporales de una sesión existente del navegador; no es un inicio de sesión normal y puede dejar de funcionar.',
+                        : 'Para playlists específicas de YouTube Music, esta opción avanzada usa datos de una sesión existente del navegador. No equivale al acceso oficial con Google y puede dejar de funcionar.',
                   ),
                   const SizedBox(height: 10),
                   Text(
@@ -286,4 +298,174 @@ class _Thumbnail extends StatelessWidget {
             ),
           ),
         );
+}
+
+/// Google OAuth es distinto de la sesión privada de YouTube Music.
+/// Este panel muestra solo playlists accesibles mediante YouTube Data API.
+/// La conexión permanece en memoria y no requiere copiar cookies.
+class _GoogleYouTubeAccountCard extends ConsumerWidget {
+  const _GoogleYouTubeAccountCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(youtubeAccountProvider);
+    final notifier = ref.read(youtubeAccountProvider.notifier);
+    final theme = Theme.of(context);
+    final desktop = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
+    final configured = youtubeDesktopClientId.isNotEmpty;
+    final canConnect = desktop && configured;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.account_circle_outlined),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Conectar cuenta de Google',
+                    style: theme.textTheme.titleLarge,
+                  ),
+                ),
+                if (state.connected)
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: theme.colorScheme.primary,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Inicio de sesión en el navegador para consultar las '
+              'playlists de YouTube disponibles mediante la API oficial. '
+              'Esto no autoriza reproducir audio ni da acceso completo '
+              'a la biblioteca privada de YouTube Music.',
+            ),
+            if (!desktop) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'Esta conexión OAuth está preparada para escritorio. '
+                'En Android e iOS se necesita Google Sign-In nativo.',
+              ),
+            ],
+            if (desktop && !configured) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Falta configurar LYRA_GOOGLE_DESKTOP_CLIENT_ID. '
+                'Crea un cliente OAuth de tipo Aplicación de escritorio, '
+                'habilita YouTube Data API v3 y configura la pantalla de '
+                'consentimiento de Google.',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+              TextButton.icon(
+                onPressed: () => launchUrl(
+                  Uri.parse('https://console.cloud.google.com/auth/clients'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                icon: const Icon(Icons.open_in_new_rounded),
+                label: const Text('Configurar Google Cloud'),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (!state.connected)
+                  FilledButton.icon(
+                    onPressed: !canConnect || state.connecting
+                        ? null
+                        : notifier.connect,
+                    icon: const Icon(Icons.login_rounded),
+                    label: Text(
+                      state.connecting
+                          ? 'Conectando…'
+                          : 'Iniciar sesión con Google',
+                    ),
+                  )
+                else ...[
+                  FilledButton.icon(
+                    onPressed: state.loading ? null : notifier.refreshPlaylists,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Actualizar playlists'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: notifier.disconnect,
+                    icon: const Icon(Icons.logout_rounded),
+                    label: const Text('Desconectar Google'),
+                  ),
+                ],
+              ],
+            ),
+            if (state.loading || state.connecting) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
+            if (state.error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                state.error!,
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ],
+            if (state.connected) ...[
+              const SizedBox(height: 18),
+              Text(
+                'Playlists de YouTube (${state.playlists.length})',
+                style: theme.textTheme.titleMedium,
+              ),
+              if (state.playlists.isEmpty && !state.loading)
+                const Padding(
+                  padding: EdgeInsets.only(top: 10),
+                  child: Text(
+                    'No se encontraron playlists visibles '
+                    'a través de YouTube Data API.',
+                  ),
+                ),
+              for (final playlist in state.playlists)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: _Thumbnail(playlist.thumbnail),
+                  title: Text(playlist.title),
+                  subtitle: Text('${playlist.videoCount} elementos'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => notifier.loadPlaylist(playlist.id),
+                ),
+              if (state.selectedPlaylistId != null) ...[
+                const Divider(),
+                Row(
+                  children: [
+                    Text(
+                      'Contenido de la lista',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: notifier.closePlaylist,
+                      child: const Text('Cerrar'),
+                    ),
+                  ],
+                ),
+                for (final video in state.videos)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: _Thumbnail(video.thumbnail),
+                    title: Text(
+                      video.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(video.channel),
+                  ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }

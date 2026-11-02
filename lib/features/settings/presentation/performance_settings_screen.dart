@@ -6,6 +6,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:lyra_music/shared/widgets/lyra_section_banner.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -43,6 +44,13 @@ class PerformanceSettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         children: [
+          const LyraSectionBanner(
+            icon: Icons.speed_rounded,
+            eyebrow: 'RENDIMIENTO',
+            title: 'Tu equipo, tu ritmo',
+            subtitle: 'Ajusta recursos y efectos a tu dispositivo.',
+          ),
+          const SizedBox(height: 18),
           _StatusCard(state: state, scheme: scheme),
           const SizedBox(height: 16),
           Text('Modo de rendimiento', style: textTheme.titleMedium),

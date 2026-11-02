@@ -32,6 +32,7 @@ class RecommendationsSection extends ConsumerWidget {
     album: song.album,
     filePath: 'https://music.youtube.com/watch?v=${song.videoId}',
     artworkUrl: song.thumbnail,
+    artistId: song.artistId,
   );
 
   @override
@@ -93,11 +94,10 @@ class RecommendationsSection extends ConsumerWidget {
                   .where((s) => !history.contains('ytmusic:${s.videoId}'))
                   .take(9)
                   .toList();
-              if (unseen.isEmpty) {
+              if (unseen.isEmpty)
                 return const Text(
                   'Todavía no hay sugerencias nuevas para este artista.',
                 );
-              }
               return SizedBox(
                 height: 200,
                 child: ListView.separated(

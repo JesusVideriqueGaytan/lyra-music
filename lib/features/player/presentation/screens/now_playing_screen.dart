@@ -22,6 +22,7 @@ import 'package:lyra_music/features/library/presentation/widgets/track_artwork.d
 import 'package:lyra_music/features/player/domain/models/track.dart';
 import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
 import 'package:lyra_music/features/library/presentation/widgets/collection_actions.dart';
+import 'package:lyra_music/features/downloads/desktop_download.dart';
 
 class NowPlayingScreen extends ConsumerWidget {
   const NowPlayingScreen({super.key});
@@ -142,6 +143,8 @@ class NowPlayingScreen extends ConsumerWidget {
                         title: currentTrack.title,
                         artist: currentTrack.artist,
                         animate: animate,
+                        onArtistTap: () =>
+                            context.push('/artist', extra: currentTrack),
                       ),
                       const SizedBox(height: 5),
                       Text(
@@ -188,15 +191,18 @@ class NowPlayingScreen extends ConsumerWidget {
                             icon: const Icon(Icons.playlist_add_rounded),
                             label: const Text('Añadir a lista'),
                           ),
-                          IconButton.outlined(
-                            tooltip: 'Más opciones de la canción',
-                            onPressed: () => showTrackCollectionActions(
-                              context,
-                              ref,
-                              currentTrack,
+                          if (supportsDesktopDownloads &&
+                              currentTrack.id.startsWith('ytmusic:'))
+                            OutlinedButton.icon(
+                              tooltip:
+                                  'Guardar audio autorizado en el dispositivo',
+                              onPressed: () => showPermittedDownloadDialog(
+                                context,
+                                currentTrack,
+                              ),
+                              icon: const Icon(Icons.download_rounded),
+                              label: const Text('Descargar'),
                             ),
-                            icon: const Icon(Icons.more_horiz_rounded),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 20),
@@ -310,15 +316,16 @@ class _TrackTitles extends StatelessWidget {
     required this.title,
     required this.artist,
     required this.animate,
+    required this.onArtistTap,
   });
 
   final String title;
   final String artist;
   final bool animate;
+  final VoidCallback onArtistTap;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final column = Column(
       key: ValueKey('$title|$artist'),
       children: <Widget>[
@@ -332,14 +339,10 @@ class _TrackTitles extends StatelessWidget {
           ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
-        Text(
-          artist,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: Theme.of(
-            context,
-          ).textTheme.titleMedium?.copyWith(color: scheme.onSurfaceVariant),
+        TextButton.icon(
+          onPressed: onArtistTap,
+          icon: const Icon(Icons.person_search_rounded, size: 18),
+          label: Text(artist, maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
       ],
     );
@@ -355,11 +358,45 @@ class _TrackTitles extends StatelessWidget {
 /// Bottom sheet con la cola: canción actual resaltada y botones básicos de
 /// reordenar/subir-bajar y quitar (sin drag & drop complejo, según spec).
 Future<void> showQueueSheet(BuildContext context, WidgetRef ref) {
-  return showModalBottomSheet<void>(
+  final desktop = MediaQuery.sizeOf(context).width >= 760;
+  if (!desktop) {
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.72,
+        child: const _QueueSheet(),
+      ),
+    );
+  }
+  return showGeneralDialog<void>(
     context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (sheetContext) => const _QueueSheet(),
+    barrierDismissible: true,
+    barrierLabel: 'Cerrar cola',
+    barrierColor: Colors.black54,
+    transitionDuration: const Duration(milliseconds: 240),
+    pageBuilder: (dialogContext, _, _) => Align(
+      alignment: Alignment.centerRight,
+      child: SafeArea(
+        child: Material(
+          color: Theme.of(dialogContext).colorScheme.surfaceContainerLow,
+          elevation: 18,
+          child: SizedBox(
+            width: 430,
+            height: double.infinity,
+            child: const _QueueSheet(),
+          ),
+        ),
+      ),
+    ),
+    transitionBuilder: (_, animation, _, child) => SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+      child: child,
+    ),
   );
 }
 
@@ -374,91 +411,119 @@ class _QueueSheet extends ConsumerWidget {
     final currentIndex = ref.watch(
       audioPlayerControllerProvider.select((s) => s.currentIndex),
     );
+    final autoRadio = ref.watch(
+      audioPlayerControllerProvider.select((s) => s.autoRadio),
+    );
     final notifier = ref.read(audioPlayerControllerProvider.notifier);
     final scheme = Theme.of(context).colorScheme;
 
-    if (queue.isEmpty) {
-      return SizedBox(
-        height: 120,
-        child: Center(
-          child: Text(
-            'La cola está vacía',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ),
-      );
-    }
-
-    return SizedBox(
-      height: MediaQuery.sizeOf(context).height * 0.6,
-      child: ListView.builder(
-        itemCount: queue.length,
-        itemBuilder: (context, index) {
-          final track = queue[index];
-          final isCurrent = index == currentIndex;
-          return ListTile(
-            selected: isCurrent,
-            selectedTileColor: scheme.primaryContainer.withValues(alpha: 0.35),
-            leading: CircleAvatar(
-              radius: 16,
-              backgroundColor: isCurrent
-                  ? scheme.primary
-                  : scheme.surfaceContainerHighest,
-              child: Text(
-                '${index + 1}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isCurrent ? scheme.onPrimary : scheme.onSurface,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
+          child: Row(
+            children: [
+              Icon(Icons.queue_music_rounded, color: scheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Cola de reproducción',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    Text(
+                      autoRadio
+                          ? '${queue.length} canciones · Radio automática'
+                          : '${queue.length} canciones',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                 ),
               ),
-            ),
-            title: Text(
-              track.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: isCurrent
-                  ? TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: scheme.primary,
-                    )
-                  : null,
-            ),
-            subtitle: Text(
-              track.artist,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            onTap: () => notifier.playAt(index),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                IconButton(
-                  tooltip: 'Subir',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: index > 0
-                      ? () => notifier.moveInQueue(index, index - 1)
-                      : null,
-                  icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+              IconButton(
+                tooltip: 'Cerrar cola',
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: queue.isEmpty
+              ? const Center(child: Text('La cola está vacía'))
+              : ListView.builder(
+                  itemCount: queue.length,
+                  itemBuilder: (context, index) {
+                    final track = queue[index];
+                    final isCurrent = index == currentIndex;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      child: ListTile(
+                        selected: isCurrent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        selectedTileColor: scheme.primaryContainer.withValues(
+                          alpha: 0.35,
+                        ),
+                        leading: TrackArtwork(track: track, size: 48),
+                        title: Text(
+                          track.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: isCurrent
+                              ? TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: scheme.primary,
+                                )
+                              : null,
+                        ),
+                        subtitle: Text(
+                          track.artist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () => notifier.playAt(index),
+                        trailing: PopupMenuButton<String>(
+                          tooltip: 'Opciones de la cola',
+                          onSelected: (value) {
+                            if (value == 'up') {
+                              notifier.moveInQueue(index, index - 1);
+                            } else if (value == 'down') {
+                              notifier.moveInQueue(index, index + 1);
+                            } else if (value == 'remove') {
+                              notifier.removeFromQueue(index);
+                            }
+                          },
+                          itemBuilder: (_) => [
+                            if (index > 0)
+                              const PopupMenuItem(
+                                value: 'up',
+                                child: Text('Subir'),
+                              ),
+                            if (index < queue.length - 1)
+                              const PopupMenuItem(
+                                value: 'down',
+                                child: Text('Bajar'),
+                              ),
+                            const PopupMenuItem(
+                              value: 'remove',
+                              child: Text('Quitar'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                IconButton(
-                  tooltip: 'Bajar',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: index < queue.length - 1
-                      ? () => notifier.moveInQueue(index, index + 1)
-                      : null,
-                  icon: const Icon(Icons.arrow_downward_rounded, size: 18),
-                ),
-                IconButton(
-                  tooltip: 'Quitar de la cola',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => notifier.removeFromQueue(index),
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+        ),
+      ],
     );
   }
 }

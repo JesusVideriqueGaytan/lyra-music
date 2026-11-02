@@ -18,9 +18,8 @@ MusicRecommendationSeed? recommendationSeed(MusicCollectionState state) {
     final clean = artist.trim();
     if (clean.isEmpty ||
         clean.toLowerCase() == 'artista desconocido' ||
-        clean.toLowerCase() == 'canción') {
+        clean.toLowerCase() == 'canción')
       return;
-    }
     final key = clean.toLowerCase();
     scores[key] = (scores[key] ?? 0) + score;
     display[key] = clean;

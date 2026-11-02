@@ -46,6 +46,77 @@ void main() {
     expect(result.single.thumbnail, 'https://example.org/cover.jpg');
   });
 
+  test('no confunde etiquetas de video con artistas', () {
+    final songs = YtMusicClient.parseSongs({
+      'musicResponsiveListItemRenderer': {
+        'playlistItemData': {'videoId': 'abc12345678'},
+        'flexColumns': [
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': 'Insomnia'},
+                ],
+              },
+            },
+          },
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': 'Vídeo'},
+                  {'text': ' • '},
+                  {'text': 'Eve'},
+                  {'text': ' • '},
+                  {'text': '20 M de visualizaciones'},
+                ],
+              },
+            },
+          },
+        ],
+      },
+    });
+    expect(songs.single.artist, 'Eve');
+  });
+
+  test('recupera miniaturas anidadas y elige la más grande', () {
+    final releases = YtMusicClient.parseArtistReleases({
+      'items': [
+        {
+          'musicTwoRowItemRenderer': {
+            'title': {
+              'runs': [
+                {'text': 'Under Blue'},
+              ],
+            },
+            'navigationEndpoint': {
+              'browseEndpoint': {'browseId': 'MPREabc'},
+            },
+            'thumbnailRenderer': {
+              'musicThumbnailRenderer': {
+                'thumbnail': {
+                  'thumbnails': [
+                    {
+                      'url': 'https://example.org/small.jpg',
+                      'width': 64,
+                      'height': 64,
+                    },
+                    {
+                      'url': 'https://example.org/large.jpg',
+                      'width': 544,
+                      'height': 544,
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+    expect(releases.single.thumbnail, 'https://example.org/large.jpg');
+  });
+
   test('analiza playlists de biblioteca', () {
     final result = YtMusicClient.parsePlaylists({
       'contents': [

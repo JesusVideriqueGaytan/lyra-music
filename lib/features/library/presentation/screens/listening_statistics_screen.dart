@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
 import 'package:lyra_music/features/library/presentation/widgets/track_artwork.dart';
 import 'package:lyra_music/features/player/presentation/controllers/audio_player_controller.dart';
+import 'package:lyra_music/shared/widgets/lyra_section_banner.dart';
 
 String formatListeningTime(int milliseconds) {
   final d = Duration(milliseconds: milliseconds);
@@ -41,13 +42,11 @@ class ListeningStatisticsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
-          Text(
-            'Tu música en números',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Los datos se calculan en este dispositivo. No se envían a servidores.',
+          const LyraSectionBanner(
+            icon: Icons.bar_chart_rounded,
+            eyebrow: 'ESTADÍSTICAS PRIVADAS',
+            title: 'Tu música en números',
+            subtitle: 'Tus hábitos de escucha, solo en tu dispositivo.',
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -73,6 +72,14 @@ class ListeningStatisticsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 24),
           Text(
+            'Tiempo de escucha por artista',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 12),
+          if (artists.isNotEmpty)
+            _ListeningBars(values: artists.take(6).toList()),
+          const SizedBox(height: 22),
+          Text(
             'Artistas más escuchados',
             style: Theme.of(context).textTheme.titleLarge,
           ),
@@ -85,6 +92,21 @@ class ListeningStatisticsScreen extends ConsumerWidget {
               trailing: Text(formatListeningTime(a.value)),
             ),
           const SizedBox(height: 20),
+          Text(
+            'Canciones con más reproducciones',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 12),
+          if (records.isNotEmpty)
+            _ListeningBars(
+              values:
+                  (records.toList()..sort((a, b) => b.plays.compareTo(a.plays)))
+                      .take(5)
+                      .map((r) => MapEntry(r.track.title, r.plays))
+                      .toList(),
+              unit: 'reproducciones',
+            ),
+          const SizedBox(height: 24),
           Text(
             'Canciones más escuchadas',
             style: Theme.of(context).textTheme.titleLarge,
@@ -126,11 +148,10 @@ class ListeningStatisticsScreen extends ConsumerWidget {
                       ],
                     ),
                   );
-                  if (result == true) {
+                  if (result == true)
                     ref
                         .read(musicCollectionProvider.notifier)
                         .clearStatistics();
-                  }
                 },
               ),
             ),
@@ -163,4 +184,63 @@ class _Metric extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Gráfica de barras sin plugins ni telemetría; solo datos locales observados.
+class _ListeningBars extends StatelessWidget {
+  const _ListeningBars({required this.values, this.unit = 'ms'});
+  final List<MapEntry<String, int>> values;
+  final String unit;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final maximum = values.fold<int>(
+      1,
+      (best, entry) => entry.value > best ? entry.value : best,
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            for (final item in values) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      item.key,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    unit == 'ms'
+                        ? formatListeningTime(item.value)
+                        : '${item.value}',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  height: 10,
+                  color: scheme.surfaceContainerHigh,
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: (item.value / maximum).clamp(0.0, 1.0),
+                    child: ColoredBox(color: scheme.primary),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }

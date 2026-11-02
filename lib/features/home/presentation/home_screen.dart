@@ -15,6 +15,7 @@ import 'package:lyra_music/features/library/presentation/widgets/track_artwork.d
 import 'package:lyra_music/features/player/presentation/controllers/audio_player_controller.dart';
 import 'package:lyra_music/features/ytmusic/presentation/ytmusic_controller.dart';
 import 'recommendations_section.dart';
+import 'followed_artists_section.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -168,6 +169,7 @@ class HomeScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
               ],
               const RecommendationsSection(),
+              const FollowedArtistsSection(),
               Text(
                 'Explora por estilo',
                 style: Theme.of(
@@ -230,7 +232,7 @@ class HomeScreen extends ConsumerWidget {
                       ),
                       _QuickLink(
                         icon: Icons.queue_music_rounded,
-                        title: 'Favoritos y playlists',
+                        title: 'Biblioteca unificada',
                         detail: 'Colecciones e historial locales',
                         onTap: () => context.go('/my-music'),
                       ),

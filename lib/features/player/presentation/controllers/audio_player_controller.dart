@@ -59,6 +59,7 @@ extension RepeatModeUi on RepeatMode {
 class PlaybackState {
   const PlaybackState({
     this.queue = const <Track>[],
+    this.autoRadio = false,
     this.currentIndex = -1,
     this.playing = false,
     this.buffering = false,
@@ -73,6 +74,9 @@ class PlaybackState {
 
   /// Cola visible (orden original; el orden aleatorio lo gestiona just_audio).
   final List<Track> queue;
+
+  /// True cuando la cola actual contiene canciones sugeridas automáticamente.
+  final bool autoRadio;
 
   /// Índice de la pista activa; -1 si no hay nada cargado.
   final int currentIndex;
@@ -98,6 +102,7 @@ class PlaybackState {
 
   PlaybackState copyWith({
     List<Track>? queue,
+    bool? autoRadio,
     int? currentIndex,
     bool? playing,
     bool? buffering,
@@ -112,6 +117,7 @@ class PlaybackState {
   }) {
     return PlaybackState(
       queue: queue ?? this.queue,
+      autoRadio: autoRadio ?? this.autoRadio,
       currentIndex: currentIndex ?? this.currentIndex,
       playing: playing ?? this.playing,
       buffering: buffering ?? this.buffering,
@@ -179,6 +185,8 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   StreamSubscription<void>? _completedSub;
 
   bool _singleSourceQueue = false;
+  int _radioRequestGeneration = 0;
+  int _switchGeneration = 0;
   String? _lastRecordedStart;
   String? _lastPositionTrack;
   Duration? _lastPosition;
@@ -400,6 +408,44 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     );
   }
 
+  /// Añade recomendaciones al final de una cola activa sin reiniciar audio.
+  /// Se limita a una cola de una sola pista remota recién seleccionada.
+  Future<void> _buildAutomaticRadio(Track seed, int requestId) async {
+    try {
+      final id = seed.id.substring('ytmusic:'.length);
+      final suggestions = await const YtMusicClient().getRadioSongs(id);
+      if (requestId != _radioRequestGeneration ||
+          state.queue.length != 1 ||
+          state.queue.first.id != seed.id)
+        return;
+      final unique = <String>{seed.id};
+      final related = <Track>[];
+      for (final song in suggestions) {
+        final songId = 'ytmusic:${song.videoId}';
+        if (!unique.add(songId)) continue;
+        related.add(
+          Track(
+            id: songId,
+            title: song.title,
+            artist: song.artist,
+            artistId: song.artistId,
+            album: song.album,
+            filePath: 'https://music.youtube.com/watch?v=${song.videoId}',
+            artworkUrl: song.thumbnail,
+          ),
+        );
+        if (related.length >= 20) break;
+      }
+      if (related.isEmpty) return;
+      final updated = List<Track>.unmodifiable([seed, ...related]);
+      state = state.copyWith(queue: updated, autoRadio: true);
+      _publishQueue(updated, state.currentIndex);
+    } catch (_) {
+      // La radio es opcional: no debe interrumpir ni marcar como fallida
+      // una pista que ya está sonando si cambió el endpoint remoto.
+    }
+  }
+
   void _flushListening() {
     if (_pendingListen > Duration.zero && state.currentTrack != null) {
       ref
@@ -409,10 +455,12 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     }
   }
 
-  Future<void> _loadSingleIndex(int index) async {
+  Future<void> _loadSingleIndex(int index, int generation) async {
     final track = state.queue[index];
     final source = await _sourceForPlayback(track);
+    if (generation != _switchGeneration) return;
     await _player.setAudioSource(source);
+    if (generation != _switchGeneration) return;
     // No esperes el Future de play(): solo finaliza al pausar o terminar.
     unawaited(
       _player.play().catchError((Object e, StackTrace _) {
@@ -432,7 +480,12 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       return;
     }
 
+    final generation = ++_switchGeneration;
     _flushListening();
+    // Detener el audio ANTES de resolver el próximo flujo remoto (que puede
+    // tardar varios segundos). Nunca mezclar la pista vieja con la nueva.
+    await _player.stop();
+    if (generation != _switchGeneration) return;
     final safeIndex = startIndex.clamp(0, tracks.length - 1);
     _singleSourceQueue = tracks.any((t) => t.id.startsWith('ytmusic:'));
     _lastRecordedStart = null;
@@ -446,7 +499,10 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     // la UI responda de inmediato (degradación elegante en archivos lentos).
     state = state.copyWith(
       queue: List<Track>.unmodifiable(tracks),
+      autoRadio: false,
       currentIndex: safeIndex,
+      playing: false,
+      buffering: true,
       position: Duration.zero,
       duration: tracks[safeIndex].duration,
       clearError: true,
@@ -454,9 +510,16 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     _publishQueue(tracks, safeIndex);
     _syncPlaybackStateToSystem();
 
+    // Si se seleccionó una sola canción en línea, crear automáticamente una
+    // radio de recomendaciones reales. Las playlists explícitas se respetan.
+    final radioRequest = ++_radioRequestGeneration;
+    if (tracks.length == 1 && tracks.first.id.startsWith('ytmusic:')) {
+      unawaited(_buildAutomaticRadio(tracks.first, radioRequest));
+    }
+
     try {
       if (_singleSourceQueue) {
-        await _loadSingleIndex(safeIndex);
+        await _loadSingleIndex(safeIndex, generation);
         return;
       }
       // API moderna de just_audio 0.10.x: setAudioSources reemplaza al
@@ -483,12 +546,14 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       // Otra carga más reciente ganó la carrera: NO es un error real, se
       // ignora silenciosamente (comportamiento documentado por el plugin).
     } on PlayerException catch (e) {
+      if (generation != _switchGeneration) return;
       state = state.copyWith(error: _humanizePlayerError(e, tracks[safeIndex]));
     } on FileSystemException catch (e) {
       state = state.copyWith(
         error: 'Archivo no encontrado: ${e.path ?? tracks[safeIndex].filePath}',
       );
     } catch (e) {
+      if (generation != _switchGeneration) return;
       state = state.copyWith(error: _humanizePlayerError(e, tracks[safeIndex]));
     }
   }
@@ -496,22 +561,28 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   /// Salta directamente a una pista de la cola actual.
   Future<void> playAt(int index) async {
     if (index < 0 || index >= state.queue.length) return;
+    final generation = ++_switchGeneration;
     _flushListening();
     try {
       _lastRecordedStart = null;
       if (_singleSourceQueue) {
+        await _player.stop();
+        if (generation != _switchGeneration) return;
         state = state.copyWith(
           currentIndex: index,
           position: Duration.zero,
+          playing: false,
+          buffering: true,
           duration: state.queue[index].duration,
           clearError: true,
         );
         _lastPosition = null;
         _publishQueue(state.queue, index);
-        await _loadSingleIndex(index);
+        await _loadSingleIndex(index, generation);
         return;
       }
       await _player.seek(Duration.zero, index: index);
+      if (generation != _switchGeneration) return;
       _shuffleHistory.add(index);
       state = state.copyWith(currentIndex: index, clearError: true);
       // play() finishes when playback ends, so do not await here.
@@ -523,6 +594,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
         }),
       );
     } catch (e) {
+      if (generation != _switchGeneration) return;
       state = state.copyWith(
         error: _humanizePlayerError(e, state.queue[index]),
       );
@@ -585,6 +657,8 @@ class AudioPlayerController extends Notifier<PlaybackState> {
 
   Future<void> stop() async {
     try {
+      ++_radioRequestGeneration;
+      ++_switchGeneration;
       _flushListening();
       await _player.stop();
       state = state.copyWith(playing: false, position: Duration.zero);
@@ -764,7 +838,11 @@ class AudioPlayerController extends Notifier<PlaybackState> {
 
     if (remaining.isEmpty) {
       await stop();
-      state = state.copyWith(queue: const <Track>[], currentIndex: -1);
+      state = state.copyWith(
+        queue: const <Track>[],
+        autoRadio: false,
+        currentIndex: -1,
+      );
       _publishQueue(const <Track>[], -1);
       return;
     }
@@ -777,7 +855,10 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     _publishQueue(remaining, current);
 
     if (_singleSourceQueue) {
-      await _loadSingleIndex(current);
+      final generation = ++_switchGeneration;
+      await _player.stop();
+      if (generation != _switchGeneration) return;
+      await _loadSingleIndex(current, generation);
       return;
     }
     try {

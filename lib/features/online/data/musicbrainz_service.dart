@@ -33,9 +33,8 @@ class MusicBrainzRecording {
               (credit['artist'] is Map
                   ? (credit['artist'] as Map)['name']
                   : null);
-          if (name is String && name.trim().isNotEmpty) {
+          if (name is String && name.trim().isNotEmpty)
             artists.add(name.trim());
-          }
         }
       }
     }

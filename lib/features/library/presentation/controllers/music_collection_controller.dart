@@ -25,6 +25,7 @@ Track persistentTrack(Track track) {
       duration: track.duration,
       artworkUrl: track.artworkUrl,
       coverPath: track.coverPath,
+      artistId: track.artistId,
     );
   }
   return track;

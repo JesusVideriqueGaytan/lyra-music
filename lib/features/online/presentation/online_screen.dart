@@ -9,6 +9,8 @@
 /// para ciertas canciones; no promete acceso universal ni descargas.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +24,7 @@ import 'package:lyra_music/features/library/presentation/widgets/collection_acti
 import 'package:lyra_music/features/player/domain/models/track.dart';
 import 'package:lyra_music/features/ytmusic/data/ytmusic_client.dart';
 import 'package:lyra_music/features/ytmusic/presentation/ytmusic_controller.dart';
+import 'package:lyra_music/features/library/presentation/controllers/favorite_artists_controller.dart';
 
 class OnlineScreen extends ConsumerStatefulWidget {
   const OnlineScreen({super.key});
@@ -37,6 +40,64 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   final List<YtMusicSong> _recentlyPlayed = <YtMusicSong>[];
   String? _loadingVideoId;
   String? _playbackError;
+  Timer? _suggestionTimer;
+  int _suggestionGeneration = 0;
+  List<String> _liveSuggestions = [];
+  List<YtMusicArtist> _liveArtists = [];
+  bool _suggestionsLoading = false;
+
+  void _onTyped(String query) {
+    _suggestionTimer?.cancel();
+    final generation = ++_suggestionGeneration;
+    if (query.trim().length < 2) {
+      setState(() {
+        _liveSuggestions = [];
+        _liveArtists = [];
+        _suggestionsLoading = false;
+      });
+      if (query.trim().isEmpty) {
+        // Invalida una búsqueda pendiente y elimina resultados antiguos.
+        ref.read(ytMusicControllerProvider.notifier).clearSearch();
+      }
+      return;
+    }
+    setState(() {
+      _suggestionsLoading = true;
+      _liveSuggestions = [];
+      _liveArtists = [];
+    });
+    _suggestionTimer = Timer(const Duration(milliseconds: 350), () async {
+      try {
+        final client = const YtMusicClient();
+        List<String> suggestions = [];
+        try {
+          suggestions = await client.getSearchSuggestions(query);
+        } catch (_) {
+          // Un fallo de sugerencias no impide mostrar artistas.
+        }
+        if (!mounted || generation != _suggestionGeneration) return;
+        setState(() {
+          _liveSuggestions = suggestions;
+          _suggestionsLoading = false;
+        });
+        if (query.trim().length >= 3) {
+          try {
+            final artists = (await client.searchCatalog(query)).artists;
+            if (!mounted || generation != _suggestionGeneration) return;
+            setState(() => _liveArtists = artists.take(4).toList());
+          } catch (_) {
+            /* No bloquear el buscador cuando falla el proveedor. */
+          }
+        }
+      } catch (_) {
+        if (!mounted || generation != _suggestionGeneration) return;
+        setState(() {
+          _liveSuggestions = [];
+          _suggestionsLoading = false;
+        });
+      }
+    });
+  }
 
   static const _suggestions = <(String, IconData)>[
     ('Pop', Icons.auto_awesome_rounded),
@@ -55,6 +116,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
 
   @override
   void dispose() {
+    _suggestionTimer?.cancel();
     _query.dispose();
     _searchFocus.dispose();
     super.dispose();
@@ -68,7 +130,12 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     }
     if (term != null) _query.text = query;
     _searchFocus.unfocus();
+    _suggestionTimer?.cancel();
+    ++_suggestionGeneration;
     setState(() {
+      _liveSuggestions = [];
+      _liveArtists = [];
+      _suggestionsLoading = false;
       _recentSearches.removeWhere(
         (s) => s.toLowerCase() == query.toLowerCase(),
       );
@@ -86,6 +153,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     album: song.album,
     filePath: 'https://music.youtube.com/watch?v=${song.videoId}',
     artworkUrl: song.thumbnail,
+    artistId: song.artistId,
   );
 
   Future<void> _play(YtMusicSong song) async {
@@ -280,8 +348,69 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                             focusNode: _searchFocus,
                             loading: state.loading,
                             onSearch: () => _search(),
-                            onClear: () => setState(() => _query.clear()),
+                            onTyped: _onTyped,
+                            onClear: () {
+                              _query.clear();
+                              _onTyped('');
+                              _searchFocus.requestFocus();
+                            },
                           ),
+                          if (_liveArtists.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              'Artistas sugeridos',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                            for (final artist in _liveArtists)
+                              ListTile(
+                                dense: true,
+                                leading: CircleAvatar(
+                                  backgroundImage: artist.thumbnail == null
+                                      ? null
+                                      : NetworkImage(artist.thumbnail!),
+                                  child: artist.thumbnail == null
+                                      ? const Icon(Icons.person_rounded)
+                                      : null,
+                                ),
+                                title: Text(artist.name),
+                                trailing: const Icon(
+                                  Icons.chevron_right_rounded,
+                                ),
+                                onTap: () {
+                                  _searchFocus.unfocus();
+                                  context.push(
+                                    '/artist',
+                                    extra: Track(
+                                      id: 'artist:${artist.id}',
+                                      title: artist.name,
+                                      artist: artist.name,
+                                      artistId: artist.id,
+                                      album: '',
+                                      filePath: '',
+                                      artworkUrl: artist.thumbnail,
+                                    ),
+                                  );
+                                },
+                              ),
+                          ],
+                          if (_suggestionsLoading)
+                            const LinearProgressIndicator(minHeight: 2),
+                          if (_liveSuggestions.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Card(
+                              child: Column(
+                                children: [
+                                  for (final text in _liveSuggestions)
+                                    ListTile(
+                                      dense: true,
+                                      leading: const Icon(Icons.search_rounded),
+                                      title: Text(text),
+                                      onTap: () => _search(term: text),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 20),
                           if (state.query.isEmpty) ...[
                             _SectionHeading(
@@ -392,7 +521,8 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                             const SizedBox(height: 18),
                             const Center(child: Text('Buscando música…')),
                           ] else if (state.query.isNotEmpty &&
-                              state.results.isEmpty) ...[
+                              state.results.isEmpty &&
+                              state.artists.isEmpty) ...[
                             const _StatusMessage(
                               icon: Icons.search_off_rounded,
                               title: 'No encontramos resultados',
@@ -402,6 +532,89 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                         ],
                       ),
                     ),
+                    if (!state.loading &&
+                        state.error == null &&
+                        state.artists.isNotEmpty)
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(
+                          compact ? 16 : 26,
+                          4,
+                          compact ? 16 : 26,
+                          12,
+                        ),
+                        sliver: SliverToBoxAdapter(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const _SectionHeading(title: 'Artistas'),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                height: 150,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: state.artists.length,
+                                  separatorBuilder: (_, _) =>
+                                      const SizedBox(width: 12),
+                                  itemBuilder: (context, index) {
+                                    final artist = state.artists[index];
+                                    final isFollowed = ref
+                                        .watch(favoriteArtistsProvider)
+                                        .containsKey(artist.id);
+                                    return SizedBox(
+                                      width: 130,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(14),
+                                        onTap: () => context.push(
+                                          '/artist',
+                                          extra: Track(
+                                            id: 'artist:${artist.id}',
+                                            title: artist.name,
+                                            artist: artist.name,
+                                            artistId: artist.id,
+                                            album: '',
+                                            filePath: '',
+                                            artworkUrl: artist.thumbnail,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 42,
+                                              backgroundImage:
+                                                  artist.thumbnail == null
+                                                  ? null
+                                                  : NetworkImage(
+                                                      artist.thumbnail!,
+                                                    ),
+                                              child: artist.thumbnail == null
+                                                  ? const Icon(
+                                                      Icons.person_rounded,
+                                                      size: 36,
+                                                    )
+                                                  : null,
+                                            ),
+                                            const SizedBox(height: 5),
+                                            Text(
+                                              artist.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            if (isFollowed)
+                                              const Icon(
+                                                Icons.favorite_rounded,
+                                                size: 15,
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     if (!state.loading &&
                         state.error == null &&
                         state.results.isNotEmpty)
@@ -546,12 +759,14 @@ class _SearchField extends StatelessWidget {
     required this.loading,
     required this.onSearch,
     required this.onClear,
+    required this.onTyped,
   });
   final TextEditingController controller;
   final FocusNode focusNode;
   final bool loading;
   final VoidCallback onSearch;
   final VoidCallback onClear;
+  final ValueChanged<String> onTyped;
 
   @override
   Widget build(BuildContext context) {
@@ -561,6 +776,7 @@ class _SearchField extends StatelessWidget {
       focusNode: focusNode,
       textInputAction: TextInputAction.search,
       onSubmitted: (_) => onSearch(),
+      onChanged: onTyped,
       decoration: InputDecoration(
         hintText: 'Busca canciones, artistas o álbumes',
         prefixIcon: const Icon(Icons.search_rounded),
