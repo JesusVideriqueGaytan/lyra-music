@@ -36,7 +36,7 @@ class LibraryScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Biblioteca'),
+        title: const Text('Tu música', style: TextStyle(fontWeight: FontWeight.w800)),
         actions: <Widget>[
           // Reescanear: icono girando mientras isScanning (solo si hay animaciones).
           IconButton(
@@ -98,6 +98,7 @@ class LibraryScreen extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: SearchBar(
+              constraints: const BoxConstraints(minHeight: 48),
               hintText: 'Buscar título, artista o álbum…',
               leading: const Icon(Icons.search_rounded),
               elevation: const WidgetStatePropertyAll<double>(0),
@@ -201,7 +202,7 @@ class LibraryScreen extends ConsumerWidget {
         title: filteredOut ? 'Ningún resultado' : 'No se encontró audio',
         message: filteredOut
             ? 'Prueba con otro texto de búsqueda o quita el filtro de carpeta.'
-            : 'Las carpetas añadidas no contienen archivos de audio compatibles.',
+            : 'No se encontró audio compatible. Comprueba la carpeta seleccionada y sus subcarpetas.',
         actionLabel: filteredOut ? 'Limpiar filtros' : 'Reescanear',
         onAction: () {
           if (filteredOut) {
@@ -257,7 +258,12 @@ class _TrackTile extends ConsumerWidget {
     final isCurrent = currentId == track.id;
     final scheme = Theme.of(context).colorScheme;
 
-    return ListTile(
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+      elevation: 0,
+      color: isCurrent ? scheme.primaryContainer.withValues(alpha: 0.42) : scheme.surfaceContainerLow,
+      child: ListTile(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       onTap: () {
         // Reproducimos TODA la lista visible comenzando por esta pista:
         // así next/previous recorren la biblioteca filtrada actual.
@@ -306,6 +312,7 @@ class _TrackTile extends ConsumerWidget {
               ).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
             )
           : null,
+      ),
     );
   }
 
@@ -341,7 +348,11 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(icon, size: 56, color: scheme.onSurfaceVariant),
+            Container(
+              width: 88, height: 88,
+              decoration: BoxDecoration(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(24)),
+              child: Icon(icon, size: 42, color: scheme.onPrimaryContainer),
+            ),
             const SizedBox(height: 16),
             Text(title, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
@@ -372,22 +383,20 @@ Future<void> _showAddFolderSheet(BuildContext context, WidgetRef ref) async {
     final notifier = ref.read(libraryControllerProvider.notifier);
     if (ref.read(libraryControllerProvider).isScanning) return;
     try {
-      final path = await getDirectoryPath(
-        confirmButtonText: 'Seleccionar carpeta',
-      );
+      final path = await getDirectoryPath(confirmButtonText: 'Seleccionar carpeta');
       if (path == null || !context.mounted) return;
       await notifier.waitUntilReady();
       await notifier.addFolder(path);
       if (!context.mounted) return;
       final result = ref.read(libraryControllerProvider);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.error ?? 'Carpeta añadida: $path')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result.error ?? 'Carpeta añadida: $path'),
+      ));
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo abrir la carpeta: $error')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('No se pudo abrir la carpeta: $error'),
+      ));
     }
     return;
   }

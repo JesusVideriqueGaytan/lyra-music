@@ -22,9 +22,9 @@ class HardwareDetector {
     DeviceInfoPlugin? deviceInfoPlugin,
     Battery? battery,
     HardwareInfo Function()? infoOverride,
-  }) : _deviceInfo = deviceInfoPlugin ?? DeviceInfoPlugin(),
-       _battery = battery ?? Battery(),
-       _infoOverride = infoOverride;
+  })  : _deviceInfo = deviceInfoPlugin ?? DeviceInfoPlugin(),
+        _battery = battery ?? Battery(),
+        _infoOverride = infoOverride;
 
   final DeviceInfoPlugin _deviceInfo;
   final Battery _battery;
@@ -130,8 +130,10 @@ class HardwareDetector {
         final meminfo = io.File('/proc/meminfo').readAsLinesSync();
         for (final line in meminfo) {
           if (line.startsWith('MemTotal:')) {
-            final kb =
-                int.tryParse(line.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+            final kb = int.tryParse(
+                  line.replaceAll(RegExp(r'[^0-9]'), ''),
+                ) ??
+                0;
             return kb * 1024;
           }
         }

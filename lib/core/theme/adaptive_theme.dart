@@ -73,7 +73,10 @@ class AdaptiveTheme {
   }) {
     switch (variant) {
       case AppThemeVariant.light:
-        return _base(ColorScheme.fromSeed(seedColor: seed), Brightness.light);
+        return _base(
+          ColorScheme.fromSeed(seedColor: seed),
+          Brightness.light,
+        );
       case AppThemeVariant.dark:
         return _base(
           ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark),
@@ -84,9 +87,11 @@ class AdaptiveTheme {
       case AppThemeVariant.dynamic:
         // Si no hay esquema dinámico real (SO sin Material You o plugin no
         // disponible), degradar elegantemente al tema oscuro por semilla.
-        final scheme =
-            dynamicScheme ??
-            ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark);
+        final scheme = dynamicScheme ??
+            ColorScheme.fromSeed(
+              seedColor: seed,
+              brightness: Brightness.dark,
+            );
         return _base(scheme, scheme.brightness);
     }
   }
@@ -123,7 +128,9 @@ class AdaptiveTheme {
         color: scheme.surfaceContainerLow,
       ),
       listTileTheme: ListTileThemeData(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: isDark ? scheme.surfaceContainer : scheme.surface,
@@ -138,10 +145,8 @@ class AdaptiveTheme {
   /// Variante AMOLED: parte del esquema oscuro pero fuerza negros absolutos
   /// en superficies, scaffolds y diálogos para ahorrar batería en OLED.
   static ThemeData _amoled(Color seed) {
-    final darkScheme = ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: Brightness.dark,
-    );
+    final darkScheme =
+        ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark);
     final amoledScheme = darkScheme.copyWith(
       surface: pureBlack,
       surfaceContainerLowest: pureBlack,
@@ -155,7 +160,8 @@ class AdaptiveTheme {
     return theme.copyWith(
       // Diálogos y menús también en negro puro.
       dialogTheme: DialogThemeData(backgroundColor: pureBlack),
-      bottomSheetTheme: const BottomSheetThemeData(backgroundColor: pureBlack),
+      bottomSheetTheme:
+          const BottomSheetThemeData(backgroundColor: pureBlack),
       popupMenuTheme: PopupMenuThemeData(
         color: pureBlack,
         surfaceTintColor: pureBlack,

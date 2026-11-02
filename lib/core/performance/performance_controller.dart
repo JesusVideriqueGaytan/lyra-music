@@ -139,8 +139,7 @@ class PerformanceController extends Notifier<PerformanceState> {
         currentTier: PerformanceTier.low,
         features: AdaptiveFeatures.fromTier(PerformanceTier.low),
         isLoading: false,
-        error:
-            'No se pudo detectar el hardware ($e). '
+        error: 'No se pudo detectar el hardware ($e). '
             'Se aplicó el nivel Bajo por seguridad.',
       );
     }
@@ -164,9 +163,8 @@ class PerformanceController extends Notifier<PerformanceState> {
     }
     // Modo manual: priorizar el tier explícitamente guardado por el usuario;
     // si no hay uno guardado, usar el tier homónimo al modo seleccionado.
-    final savedTier = PerformanceTier.fromStorageKey(
-      _prefs?.getString(_kTierKey),
-    );
+    final savedTier =
+        PerformanceTier.fromStorageKey(_prefs?.getString(_kTierKey));
     return savedTier ?? _tierFromManualMode(mode) ?? detected;
   }
 
@@ -251,8 +249,8 @@ final hardwareDetectorProvider = Provider<HardwareDetector>((ref) {
 // `ProviderScope(overrides: [hardwareDetectorProvider.overrideWithValue(...)])`.
 final performanceControllerProvider =
     NotifierProvider<PerformanceController, PerformanceState>(
-      PerformanceController.new,
-    );
+  PerformanceController.new,
+);
 
 /// Atajo de lectura solo para las características adaptativas.
 final adaptiveFeaturesProvider = Provider<AdaptiveFeatures>((ref) {

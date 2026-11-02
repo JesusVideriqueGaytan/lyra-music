@@ -81,10 +81,8 @@ class LocalAudioRepository implements AudioRepository {
     // Recorrido recursivo NO bloqueante (listen + await for) para no
     // congelar la UI en bibliotecas grandes.
     try {
-      await for (final entity in directory.list(
-        recursive: true,
-        followLinks: false,
-      )) {
+      await for (final entity
+          in directory.list(recursive: true, followLinks: false)) {
         if (tracks.length >= kMaxTracksPerScan) {
           errors.add(
             'Se alcanzó el límite de $kMaxTracksPerScan canciones; '
@@ -96,9 +94,8 @@ class LocalAudioRepository implements AudioRepository {
         visited++;
 
         final path = entity.path.toLowerCase();
-        final isAudio = kSupportedAudioExtensions.any(
-          (ext) => path.endsWith(ext),
-        );
+        final isAudio = kSupportedAudioExtensions
+            .any((ext) => path.endsWith(ext));
         if (!isAudio) continue;
 
         // Ocultamos artefactos temporales (.tmp, archivos ocultos de
@@ -116,9 +113,8 @@ class LocalAudioRepository implements AudioRepository {
 
     // Orden estable por título para que la biblioteca no cambie de orden
     // entre escaneos.
-    tracks.sort(
-      (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-    );
+    tracks.sort((a, b) =>
+        a.title.toLowerCase().compareTo(b.title.toLowerCase()));
 
     return ScanResult(
       tracks: tracks,
@@ -141,9 +137,8 @@ class LocalAudioRepository implements AudioRepository {
       }
     }
 
-    allTracks.sort(
-      (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-    );
+    allTracks.sort((a, b) =>
+        a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return allTracks;
   }
 
@@ -179,8 +174,8 @@ class LocalAudioRepository implements AudioRepository {
     final candidates = <String>[];
 
     try {
-      final home =
-          Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+      final home = Platform.environment['HOME'] ??
+          Platform.environment['USERPROFILE'];
       if (home != null) {
         candidates.add('$home${Platform.pathSeparator}Music');
         candidates.add(home);

@@ -1,5 +1,5 @@
 name: lyra_music
-description: "A new Flutter project."
+description: "Lyra — reproductor musical libre, adaptable y multiplataforma."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -41,6 +41,10 @@ dependencies:
   flutter_riverpod: ^2.6.1
   riverpod_annotation: ^2.6.1
   just_audio: ^0.10.5
+  # Backend nativo para Linux y Windows; just_audio solo no lo proporciona.
+  just_audio_media_kit: ^2.1.0
+  media_kit_libs_linux: any
+  media_kit_libs_windows_audio: any
   just_audio_background: ^0.0.1-beta.5
   audio_service: ^0.18.19
   file_selector: ^1.1.0

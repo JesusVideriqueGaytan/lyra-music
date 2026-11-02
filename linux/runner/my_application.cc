@@ -46,11 +46,23 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "lyra_music");
+    gtk_header_bar_set_title(header_bar, "Lyra");
+    // Botones nativos: funcionan con GTK en Wayland y X11.
+    gtk_header_bar_set_decoration_layout(header_bar, ":minimize,maximize,close");
+    gtk_header_bar_set_has_subtitle(header_bar, FALSE);
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
+    // Barra compacta con controles estándar, sin recrear botones en Flutter.
+    GtkCssProvider* css = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(css,
+      "headerbar { min-height: 30px; padding: 0 6px; } "
+      "headerbar button { min-height: 22px; min-width: 22px; padding: 2px; }",
+      -1, nullptr);
+    gtk_style_context_add_provider_for_screen(gtk_widget_get_screen(window),
+      GTK_STYLE_PROVIDER(css), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(css);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "lyra_music");
+    gtk_window_set_title(window, "Lyra");
   }
 
   gtk_window_set_default_size(window, 1280, 720);

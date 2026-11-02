@@ -54,9 +54,7 @@ class _ProgressBarState extends ConsumerState<ProgressBar> {
 
     final totalMs = duration?.inMilliseconds ?? 0;
     // clamp devuelve num en SDK <3.x; forzamos int para el Slider.
-    final currentMs = position.inMilliseconds
-        .clamp(0, totalMs == 0 ? 0 : totalMs)
-        .toInt();
+    final currentMs = position.inMilliseconds.clamp(0, totalMs == 0 ? 0 : totalMs).toInt();
     final scheme = Theme.of(context).colorScheme;
 
     void handleDrag(double value) {

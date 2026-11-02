@@ -88,9 +88,8 @@ class Track {
   factory Track.fromFilePath(String path) {
     final fileName = path.split(Platform.pathSeparator).last;
     final dotIndex = fileName.lastIndexOf('.');
-    final cleanTitle = dotIndex > 0
-        ? fileName.substring(0, dotIndex)
-        : fileName;
+    final cleanTitle =
+        dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
 
     // Convención habitual "Artist - Title.mp3": si el nombre contiene " - "
     // lo interpretamos como artista + título para mejorar la UI sin leer

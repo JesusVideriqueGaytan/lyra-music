@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.lyramusic" "\0"
-            VALUE "FileDescription", "lyra_music" "\0"
+            VALUE "FileDescription", "Lyra" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "lyra_music" "\0"
+            VALUE "InternalName", "Lyra" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.lyramusic. All rights reserved." "\0"
             VALUE "OriginalFilename", "lyra_music.exe" "\0"
-            VALUE "ProductName", "lyra_music" "\0"
+            VALUE "ProductName", "Lyra" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

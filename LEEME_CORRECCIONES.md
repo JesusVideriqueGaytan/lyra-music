@@ -41,3 +41,31 @@ ConstrainedBox recibe constraints: const BoxConstraints(maxWidth: 220). Eliminad
 
 ## Selector de carpetas de escritorio
 Copia solo library_screen.dart y library_controller.dart en sus rutas originales dentro de lib/features/library/presentation/. Ejecuta flutter pub add file_selector en tu proyecto para resolver y registrar la dependencia. Cierra la aplicación y vuelve a ejecutar flutter run -d linux: un hot reload no registra el plugin nuevo. Se valida acceso antes de persistir la ruta; cancelar no añade ninguna carpeta; se informa cuando no hay audio compatible. Se comparte la inicialización para evitar recargas duplicadas durante la selección. El selector nativo se aplica a Linux, Windows y macOS; en móvil se conserva la entrada manual. En macOS hace falta configurar los entitlements de acceso a archivos seleccionados antes de distribuir. No se ha ejecutado Flutter aquí ni se ha probado el diálogo nativo. El rediseño visual es una propuesta, no está incluido.
+
+
+## Revisión Lyra — escritorio y audio (1 noviembre 2026)
+
+- Backend de `just_audio` para Linux y Windows: `just_audio_media_kit` y bibliotecas nativas; inicialización antes del primer AudioPlayer. Esto atiende el error `MissingPluginException ... com.ryanheise.just_audio.methods` (requiere una compilación completa).
+- Identidad visible Lyra en Linux (GTK), Windows, macOS y Android. Se conserva deliberadamente `name: lyra_music` como identificador Dart para evitar romper todos los imports y referencias internas.
+- GTK: título compacto, controles nativos para minimizar/maximizar/cerrar; la ubicación y visibilidad de botones pueden depender del compositor Wayland / configuración del usuario.
+- Vista de escritorio: panel lateral persistente para Biblioteca, Reproductor y Rendimiento, selección de ruta activa y mini reproductor. Ajustes también incluye Volver.
+- Biblioteca: mejoras visuales a las filas, búsqueda y estado vacío. Se conserva selección de carpetas mediante file_selector y escaneo recursivo.
+- Principios preservados: código abierto GPLv3, privacidad, reproducción local, ligereza, arquitectura modular y efectos según capacidad del equipo.
+
+### Instalación / comprobación (CachyOS)
+
+Extrae el ZIP en una carpeta nueva para no mezclar código con archivos generados de una compilación anterior. Luego:
+
+```bash
+cd lyra-music-main
+flutter clean
+flutter pub get
+dart format lib test
+flutter analyze
+flutter test
+flutter run -d linux
+```
+
+En Linux debe estar disponible el entorno de compilación Flutter desktop (CMake, Ninja, clang, pkg-config, GTK3 dev). Revisa primero que la carpeta elegida contenga `.mp3`, `.flac`, `.ogg`, `.wav` o `.m4a`. Evita hot reload para cambios de plugins nativos.
+
+**Validación pendiente:** en este entorno no está instalado `flutter` ni `dart`, por lo que los cambios no están compilados ni ensayados en Linux. Si `flutter pub get` encuentra un conflicto de versiones, conserva el mensaje para ajustar las restricciones. El archivo `pubspec.lock` original queda incluido como base y se regenerará con `flutter pub get`.

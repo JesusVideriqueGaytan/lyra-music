@@ -29,9 +29,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: <RouteBase>[
       ShellRoute(
         builder: (context, state, child) => _MiniPlayerScaffold(
-          showMiniPlayer: state.uri.path != '/player',
-          child: child,
-        ),
+          showMiniPlayer: state.uri.path != '/player', child: child),
         routes: <RouteBase>[
           GoRoute(path: '/', redirect: (context, state) => '/library'),
           GoRoute(
@@ -97,10 +95,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 /// contenido de la ruta activa. En la propia pantalla /player se omite para
 /// no duplicar controles.
 class _MiniPlayerScaffold extends StatelessWidget {
-  const _MiniPlayerScaffold({
-    required this.child,
-    required this.showMiniPlayer,
-  });
+  const _MiniPlayerScaffold({required this.child, required this.showMiniPlayer});
 
   final bool showMiniPlayer;
 
@@ -108,17 +103,88 @@ class _MiniPlayerScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+
+    final wide = MediaQuery.sizeOf(context).width >= 850;
+    final currentPath = GoRouterState.of(context).uri.path;
+    final scheme = Theme.of(context).colorScheme;
+    final content = Stack(
       children: <Widget>[
         if (child != null) child!,
         if (showMiniPlayer)
           const PositionedDirectional(
-            start: 0,
-            end: 0,
-            bottom: 0,
+            start: 0, end: 0, bottom: 0,
             child: SafeArea(top: false, child: MiniPlayer()),
           ),
       ],
+    );
+    if (!wide) return content;
+    return Material(
+      color: scheme.surface,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 216,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 18, 12, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 6, 0, 26),
+                    child: Row(children: [
+                      Icon(Icons.graphic_eq_rounded, color: scheme.primary, size: 27),
+                      const SizedBox(width: 10),
+                      Text('Lyra', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+                    ]),
+                  ),
+                  _NavItem(icon: Icons.library_music_rounded, title: 'Biblioteca',
+                    selected: currentPath == '/library', onTap: () => context.go('/library')),
+                  const SizedBox(height: 6),
+                  _NavItem(icon: Icons.play_circle_outline_rounded, title: 'Reproductor',
+                    selected: currentPath == '/player', onTap: () => context.go('/player')),
+                  const Spacer(),
+                  const Divider(),
+                  _NavItem(icon: Icons.tune_rounded, title: 'Rendimiento',
+                    selected: currentPath == '/settings', onTap: () => context.go('/settings')),
+                  const SizedBox(height: 10),
+                  Padding(padding: const EdgeInsets.only(left: 12),
+                    child: Text('Libre · Ligero · Adaptable', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant))),
+                ],
+              ),
+            ),
+          ),
+          VerticalDivider(width: 1, color: scheme.outlineVariant),
+          Expanded(child: content),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({required this.icon, required this.title, required this.selected, required this.onTap});
+  final IconData icon;
+  final String title;
+  final bool selected;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: selected ? scheme.primaryContainer : Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
+          child: Row(children: [
+            Icon(icon, size: 20, color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant),
+            const SizedBox(width: 12),
+            Expanded(child: Text(title, style: TextStyle(fontWeight: selected ? FontWeight.w700 : FontWeight.w500))),
+          ]),
+        ),
+      ),
     );
   }
 }
