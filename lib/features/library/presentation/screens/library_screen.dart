@@ -89,24 +89,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     List<Track> filtered = visible;
     if (_groupTitle != null) {
-      filtered = visible
-          .where(
-            (track) => switch (_tab) {
-              _LibraryTab.artists => track.artist == _groupTitle,
-              _LibraryTab.albums => track.album == _groupTitle,
-              _LibraryTab.folders => track.directoryPath == _groupTitle,
-              _ => true,
-            },
-          )
-          .toList(growable: false);
+      filtered = visible.where((track) => switch (_tab) {
+        _LibraryTab.artists => track.artist == _groupTitle,
+        _LibraryTab.albums => track.album == _groupTitle,
+        _LibraryTab.folders => track.directoryPath == _groupTitle,
+        _ => true,
+      }).toList(growable: false);
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Biblioteca',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
+        title: const Text('Biblioteca', style: TextStyle(fontWeight: FontWeight.w800)),
         actions: [
           IconButton(
             tooltip: 'Actualizar biblioteca',
@@ -125,240 +118,156 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              width >= 700 ? 24 : 16,
-              12,
-              width >= 700 ? 24 : 16,
-              12,
-            ),
-            child: LyraSectionBanner(
-              icon: _collectionTab
-                  ? Icons.library_music_rounded
-                  : Icons.folder_copy_rounded,
-              eyebrow: _collectionTab ? 'TU BIBLIOTECA' : 'ARCHIVOS LOCALES',
-              title: _collectionTab
-                  ? 'Tu colección'
-                  : 'Tu colección, a tu ritmo',
-              subtitle: _collectionTab
-                  ? 'Favoritos, playlists, artistas e historial privados.'
-                  : 'Música del dispositivo, siempre disponible sin conexión.',
-            ),
+      body: Column(children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(width >= 700 ? 24 : 16, 12,
+            width >= 700 ? 24 : 16, 12),
+          child: LyraSectionBanner(
+            icon: _collectionTab ? Icons.library_music_rounded : Icons.folder_copy_rounded,
+            eyebrow: _collectionTab ? 'TU BIBLIOTECA' : 'ARCHIVOS LOCALES',
+            title: _collectionTab ? 'Tu colección' : 'Tu colección, a tu ritmo',
+            subtitle: _collectionTab
+              ? 'Favoritos, playlists, artistas e historial privados.'
+              : 'Música del dispositivo, siempre disponible sin conexión.',
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(
-                  value: true,
-                  label: Text('Mi colección'),
-                  icon: Icon(Icons.favorite_border_rounded),
-                ),
-                ButtonSegment(
-                  value: false,
-                  label: Text('Archivos locales'),
-                  icon: Icon(Icons.folder_outlined),
-                ),
-              ],
-              selected: {_collectionTab},
-              onSelectionChanged: (values) =>
-                  setState(() => _collectionTab = values.first),
-            ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: true, label: Text('Mi colección'),
+                icon: Icon(Icons.favorite_border_rounded)),
+              ButtonSegment(value: false, label: Text('Archivos locales'),
+                icon: Icon(Icons.folder_outlined)),
+            ],
+            selected: {_collectionTab},
+            onSelectionChanged: (values) => setState(() => _collectionTab = values.first),
           ),
-          Expanded(
-            child: _collectionTab
-                ? const MyMusicScreen(embedded: true)
-                : CustomScrollView(
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            width >= 700 ? 24 : 16,
-                            16,
-                            width >= 700 ? 24 : 16,
-                            12,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _LibrarySummary(
-                                total: state.totalTracks,
-                                folders: state.folders.length,
-                                onAdd: () => _showAddFolderSheet(context, ref),
-                                onPlay: state.tracks.isEmpty
-                                    ? null
-                                    : () => ref
-                                          .read(
-                                            audioPlayerControllerProvider
-                                                .notifier,
-                                          )
-                                          .playQueue(
-                                            visible.isEmpty
-                                                ? state.tracks
-                                                : visible,
-                                          ),
-                              ),
-                              const SizedBox(height: 20),
-                              SearchBar(
-                                controller: _searchController,
-                                hintText:
-                                    'Buscar canciones, artistas o álbumes',
-                                leading: const Icon(Icons.search_rounded),
-                                constraints: const BoxConstraints(
-                                  minHeight: 48,
-                                ),
-                                elevation: const WidgetStatePropertyAll<double>(
-                                  0,
-                                ),
-                                onChanged: notifier.setSearchQuery,
-                                trailing: [
-                                  if (state.searchQuery.isNotEmpty)
-                                    IconButton(
-                                      tooltip: 'Borrar búsqueda',
-                                      onPressed: () {
-                                        _searchController.clear();
-                                        notifier.setSearchQuery('');
-                                      },
-                                      icon: const Icon(Icons.close_rounded),
-                                    ),
-                                ],
-                              ),
-                              if (state.error != null) ...[
-                                const SizedBox(height: 10),
-                                Card(
-                                  color: scheme.errorContainer,
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.info_outline_rounded,
-                                          color: scheme.onErrorContainer,
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: Text(
-                                            state.error!,
-                                            style: TextStyle(
-                                              color: scheme.onErrorContainer,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 20),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  for (final tab in _LibraryTab.values)
-                                    ChoiceChip(
-                                      avatar: Icon(tab.icon, size: 17),
-                                      label: Text(
-                                        '${tab.label}  ${counts[tab]}',
-                                      ),
-                                      selected: _tab == tab,
-                                      onSelected: (_) => setState(() {
-                                        _tab = tab;
-                                        _groupTitle = null;
-                                      }),
-                                    ),
-                                ],
-                              ),
-                              if (_groupTitle != null) ...[
-                                const SizedBox(height: 12),
-                                ActionChip(
-                                  avatar: const Icon(
-                                    Icons.arrow_back_rounded,
-                                    size: 18,
-                                  ),
-                                  label: Text(
-                                    'Todas las ${_tab.label.toLowerCase()}  /  '
-                                    '${_tab == _LibraryTab.folders ? _folderName(_groupTitle!) : _groupTitle!}',
-                                  ),
-                                  onPressed: () =>
-                                      setState(() => _groupTitle = null),
-                                ),
-                              ],
-                              const SizedBox(height: 18),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      _groupTitle == null
-                                          ? _tab.label
-                                          : (_tab == _LibraryTab.folders
-                                                ? _folderName(_groupTitle!)
-                                                : _groupTitle!),
-                                      style: theme.textTheme.titleLarge
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
-                                  ),
-                                  if (state.searchQuery.isNotEmpty ||
-                                      state.folderFilter != null)
-                                    TextButton(
-                                      onPressed: _clearFilters,
-                                      child: const Text('Limpiar filtros'),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                            ],
-                          ),
+        ),
+        Expanded(child: _collectionTab
+          ? const MyMusicScreen(embedded: true)
+          : CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(width >= 700 ? 24 : 16, 16,
+                  width >= 700 ? 24 : 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _LibrarySummary(
+                    total: state.totalTracks,
+                    folders: state.folders.length,
+                    onAdd: () => _showAddFolderSheet(context, ref),
+                    onPlay: state.tracks.isEmpty ? null : () =>
+                      ref.read(audioPlayerControllerProvider.notifier)
+                        .playQueue(visible.isEmpty ? state.tracks : visible),
+                  ),
+                  const SizedBox(height: 20),
+                  SearchBar(
+                    controller: _searchController,
+                    hintText: 'Buscar canciones, artistas o álbumes',
+                    leading: const Icon(Icons.search_rounded),
+                    constraints: const BoxConstraints(minHeight: 48),
+                    elevation: const WidgetStatePropertyAll<double>(0),
+                    onChanged: notifier.setSearchQuery,
+                    trailing: [
+                      if (state.searchQuery.isNotEmpty)
+                        IconButton(
+                          tooltip: 'Borrar búsqueda',
+                          onPressed: () {
+                            _searchController.clear();
+                            notifier.setSearchQuery('');
+                          },
+                          icon: const Icon(Icons.close_rounded),
                         ),
-                      ),
-                      if (state.isScanning)
-                        const SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      else if (state.folders.isEmpty)
-                        SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: _EmptyLibrary(
-                            title: 'Tu biblioteca comienza aquí',
-                            description:
-                                'Elige una carpeta con tus canciones para empezar. '
-                                'Lyra funcionará sin depender de Internet.',
-                            actionLabel: 'Añadir carpeta',
-                            onAction: () => _showAddFolderSheet(context, ref),
-                          ),
-                        )
-                      else if (visible.isEmpty)
-                        SliverFillRemaining(
-                          hasScrollBody: false,
-                          child: _EmptyLibrary(
-                            title: 'No encontramos canciones',
-                            description:
-                                'Prueba otra búsqueda o vuelve a escanear tus carpetas.',
-                            actionLabel: 'Limpiar búsqueda',
-                            onAction: _clearFilters,
-                          ),
-                        )
-                      else if (_tab == _LibraryTab.songs || _groupTitle != null)
-                        SliverList.builder(
-                          itemCount: filtered.length,
-                          itemBuilder: (context, index) => _SongRow(
-                            track: filtered[index],
-                            queue: filtered,
-                            index: index,
-                          ),
-                        )
-                      else
-                        _buildGroups(context, visible, width),
-                      const SliverToBoxAdapter(child: SizedBox(height: 24)),
                     ],
                   ),
+                  if (state.error != null) ...[
+                    const SizedBox(height: 10),
+                    Card(
+                      color: scheme.errorContainer,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(children: [
+                          Icon(Icons.info_outline_rounded, color: scheme.onErrorContainer),
+                          const SizedBox(width: 10),
+                          Expanded(child: Text(state.error!, style: TextStyle(color: scheme.onErrorContainer))),
+                        ]),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final tab in _LibraryTab.values)
+                      ChoiceChip(
+                        avatar: Icon(tab.icon, size: 17),
+                        label: Text('${tab.label}  ${counts[tab]}'),
+                        selected: _tab == tab,
+                        onSelected: (_) => setState(() {
+                          _tab = tab;
+                          _groupTitle = null;
+                        }),
+                      ),
+                  ]),
+                  if (_groupTitle != null) ...[
+                    const SizedBox(height: 12),
+                    ActionChip(
+                      avatar: const Icon(Icons.arrow_back_rounded, size: 18),
+                      label: Text('Todas las ${_tab.label.toLowerCase()}  /  '
+                          '${_tab == _LibraryTab.folders ? _folderName(_groupTitle!) : _groupTitle!}'),
+                      onPressed: () => setState(() => _groupTitle = null),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Row(children: [
+                    Expanded(child: Text(
+                      _groupTitle == null ? _tab.label : (_tab == _LibraryTab.folders ? _folderName(_groupTitle!) : _groupTitle!),
+                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                    )),
+                    if (state.searchQuery.isNotEmpty || state.folderFilter != null)
+                      TextButton(onPressed: _clearFilters, child: const Text('Limpiar filtros')),
+                  ]),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
           ),
+          if (state.isScanning)
+            const SliverFillRemaining(hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator()))
+          else if (state.folders.isEmpty)
+            SliverFillRemaining(hasScrollBody: false,
+              child: _EmptyLibrary(
+                title: 'Tu biblioteca comienza aquí',
+                description: 'Elige una carpeta con tus canciones para empezar. '
+                    'Lyra funcionará sin depender de Internet.',
+                actionLabel: 'Añadir carpeta',
+                onAction: () => _showAddFolderSheet(context, ref),
+              ))
+          else if (visible.isEmpty)
+            SliverFillRemaining(hasScrollBody: false,
+              child: _EmptyLibrary(
+                title: 'No encontramos canciones',
+                description: 'Prueba otra búsqueda o vuelve a escanear tus carpetas.',
+                actionLabel: 'Limpiar búsqueda',
+                onAction: _clearFilters,
+              ))
+          else if (_tab == _LibraryTab.songs || _groupTitle != null)
+            SliverList.builder(
+              itemCount: filtered.length,
+              itemBuilder: (context, index) => _SongRow(
+                track: filtered[index],
+                queue: filtered,
+                index: index,
+              ),
+            )
+          else
+            _buildGroups(context, visible, width),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
         ],
-      ),
+      )),
+      ]),
     );
   }
 
@@ -373,15 +282,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       };
       groups.update(key, (n) => n + 1, ifAbsent: () => 1);
     }
-    final sorted = groups.keys.toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    final sorted = groups.keys.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     // Dependemos del ancho real del contenido, no de la pantalla física.
     final availableWidth = width > 850 ? width - 216 : width;
-    final columns = availableWidth >= 1000
-        ? 4
-        : availableWidth >= 680
-        ? 3
-        : 2;
+    final columns = availableWidth >= 1000 ? 4 : availableWidth >= 680 ? 3 : 2;
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       sliver: SliverGrid.builder(
@@ -410,21 +314,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   children: [
                     Icon(_tab.icon, color: scheme.primary, size: 32),
                     const Spacer(),
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
-                    Text(
-                      '${groups[key]} canciones',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
+                    Text('${groups[key]} canciones',
+                      style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
                   ],
                 ),
               ),
@@ -437,20 +331,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 }
 
 String _folderName(String path) {
-  final segments = path
-      .split(RegExp(r'[/\\]'))
-      .where((s) => s.isNotEmpty)
-      .toList();
+  final segments = path.split(RegExp(r'[/\\]')).where((s) => s.isNotEmpty).toList();
   return segments.isEmpty ? path : segments.last;
 }
 
 class _LibrarySummary extends StatelessWidget {
-  const _LibrarySummary({
-    required this.total,
-    required this.folders,
-    required this.onAdd,
-    required this.onPlay,
-  });
+  const _LibrarySummary({required this.total, required this.folders,
+    required this.onAdd, required this.onPlay});
   final int total;
   final int folders;
   final VoidCallback onAdd;
@@ -465,62 +352,37 @@ class _LibrarySummary extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
         gradient: LinearGradient(
-          colors: [
-            scheme.primaryContainer.withValues(alpha: 0.82),
-            scheme.surfaceContainerHigh,
-          ],
+          colors: [scheme.primaryContainer.withValues(alpha: 0.82),
+                   scheme.surfaceContainerHigh],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.library_music_rounded, size: 29),
-            const SizedBox(height: 10),
-            Text(
-              'Biblioteca local',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '$total canciones  ·  $folders carpetas',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.icon(
-                  onPressed: onPlay,
-                  icon: const Icon(Icons.play_arrow_rounded),
-                  label: Text(compact ? 'Reproducir' : 'Reproducir colección'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: onAdd,
-                  icon: const Icon(Icons.create_new_folder_outlined),
-                  label: const Text('Añadir carpeta'),
-                ),
-              ],
-            ),
-          ],
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(Icons.library_music_rounded, size: 29),
+          const SizedBox(height: 10),
+          Text('Biblioteca local', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text('$total canciones  ·  $folders carpetas',
+              style: Theme.of(context).textTheme.bodyMedium),
+          const SizedBox(height: 16),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            FilledButton.icon(onPressed: onPlay, icon: const Icon(Icons.play_arrow_rounded),
+              label: Text(compact ? 'Reproducir' : 'Reproducir colección')),
+            OutlinedButton.icon(onPressed: onAdd,
+              icon: const Icon(Icons.create_new_folder_outlined),
+              label: const Text('Añadir carpeta')),
+          ]),
+        ]),
       ),
     );
   }
 }
 
 class _SongRow extends ConsumerWidget {
-  const _SongRow({
-    required this.track,
-    required this.queue,
-    required this.index,
-  });
+  const _SongRow({required this.track, required this.queue, required this.index});
   final Track track;
   final List<Track> queue;
   final int index;
@@ -528,64 +390,31 @@ class _SongRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final isCurrent =
-        ref.watch(
-          audioPlayerControllerProvider.select((s) => s.currentTrack?.id),
-        ) ==
-        track.id;
+    final isCurrent = ref.watch(audioPlayerControllerProvider.select((s) => s.currentTrack?.id)) == track.id;
     final subtitle = '${track.artist}  ·  ${track.folderName}';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
       child: Card(
         margin: EdgeInsets.zero,
         elevation: 0,
-        color: isCurrent
-            ? scheme.primaryContainer.withValues(alpha: 0.40)
-            : scheme.surfaceContainerLow,
+        color: isCurrent ? scheme.primaryContainer.withValues(alpha: 0.40) : scheme.surfaceContainerLow,
         child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 12,
-            vertical: 5,
-          ),
-          onTap: () => ref
-              .read(audioPlayerControllerProvider.notifier)
-              .playQueue(queue, startIndex: index),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          onTap: () => ref.read(audioPlayerControllerProvider.notifier).playQueue(queue, startIndex: index),
           leading: TrackArtwork(track: track, size: 48),
-          title: Text(
-            track.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+          title: Text(track.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600)),
+          subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(
+              tooltip: 'Favorito',
+              icon: Icon(ref.watch(musicCollectionProvider).isFavorite(track)
+                ? Icons.favorite_rounded : Icons.favorite_border_rounded),
+              onPressed: () => ref.read(musicCollectionProvider.notifier)
+                .toggleFavorite(track),
             ),
-          ),
-          subtitle: Text(
-            subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                tooltip: 'Favorito',
-                icon: Icon(
-                  ref.watch(musicCollectionProvider).isFavorite(track)
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                ),
-                onPressed: () => ref
-                    .read(musicCollectionProvider.notifier)
-                    .toggleFavorite(track),
-              ),
-              IconButton(
-                tooltip: 'Más opciones',
-                icon: const Icon(Icons.more_vert_rounded),
-                onPressed: () =>
-                    showTrackCollectionActions(context, ref, track),
-              ),
-            ],
-          ),
+            TrackActionsMenu(track: track),
+          ]),
         ),
       ),
     );
@@ -593,12 +422,8 @@ class _SongRow extends ConsumerWidget {
 }
 
 class _EmptyLibrary extends StatelessWidget {
-  const _EmptyLibrary({
-    required this.title,
-    required this.description,
-    required this.actionLabel,
-    required this.onAction,
-  });
+  const _EmptyLibrary({required this.title, required this.description,
+    required this.actionLabel, required this.onAction});
   final String title;
   final String description;
   final String actionLabel;
@@ -608,26 +433,17 @@ class _EmptyLibrary extends StatelessWidget {
   Widget build(BuildContext context) => Center(
     child: Padding(
       padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.library_music_outlined,
-            size: 60,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(height: 14),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(description, textAlign: TextAlign.center),
-          const SizedBox(height: 14),
-          FilledButton(onPressed: onAction, child: Text(actionLabel)),
-        ],
-      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.library_music_outlined, size: 60,
+          color: Theme.of(context).colorScheme.primary),
+        const SizedBox(height: 14),
+        Text(title, textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 8),
+        Text(description, textAlign: TextAlign.center),
+        const SizedBox(height: 14),
+        FilledButton(onPressed: onAction, child: Text(actionLabel)),
+      ]),
     ),
   );
 }
@@ -643,22 +459,20 @@ Future<void> _showAddFolderSheet(BuildContext context, WidgetRef ref) async {
     final notifier = ref.read(libraryControllerProvider.notifier);
     if (ref.read(libraryControllerProvider).isScanning) return;
     try {
-      final path = await getDirectoryPath(
-        confirmButtonText: 'Seleccionar carpeta',
-      );
+      final path = await getDirectoryPath(confirmButtonText: 'Seleccionar carpeta');
       if (path == null || !context.mounted) return;
       await notifier.waitUntilReady();
       await notifier.addFolder(path);
       if (!context.mounted) return;
       final result = ref.read(libraryControllerProvider);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.error ?? 'Carpeta añadida: $path')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result.error ?? 'Carpeta añadida: $path'),
+      ));
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo abrir la carpeta: $error')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('No se pudo abrir la carpeta: $error'),
+      ));
     }
     return;
   }

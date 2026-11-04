@@ -23,6 +23,7 @@ import 'package:lyra_music/features/player/domain/models/track.dart';
 import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
 import 'package:lyra_music/features/library/presentation/widgets/collection_actions.dart';
 import 'package:lyra_music/features/downloads/desktop_download.dart';
+import 'package:lyra_music/features/ytmusic/presentation/widgets/song_actions.dart';
 
 /// Muestra la cola integrada a la derecha en escritorio; el usuario puede
 /// plegarla sin abrir un diálogo que cubra la portada y los controles.
@@ -90,23 +91,20 @@ class NowPlayingScreen extends ConsumerWidget {
       // mientras exista (el controller lo limpia al reproducir otra pista).
       bottomNavigationBar: error != null
           ? MaterialBanner(
-              content: Text(error),
-              backgroundColor: scheme.errorContainer,
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => ref
-                      .read(audioPlayerControllerProvider.notifier)
-                      .playAt(
-                        ref.read(audioPlayerControllerProvider).currentIndex,
-                      ),
-                  child: const Text('Reintentar'),
-                ),
-                TextButton(
-                  onPressed: () => context.go('/library'),
-                  child: const Text('Buscar otra canción'),
-                ),
-              ],
-            )
+                content: Text(error),
+                backgroundColor: scheme.errorContainer,
+                actions: <Widget>[
+                  TextButton(
+                    onPressed: () => ref.read(audioPlayerControllerProvider.notifier)
+                      .playAt(ref.read(audioPlayerControllerProvider).currentIndex),
+                    child: const Text('Reintentar'),
+                  ),
+                  TextButton(
+                    onPressed: () => context.go('/library'),
+                    child: const Text('Buscar otra canción'),
+                  ),
+                ],
+              )
           : null,
       body: Stack(
         fit: StackFit.expand,
@@ -120,15 +118,13 @@ class NowPlayingScreen extends ConsumerWidget {
                 final dockVisible = ref.watch(queueDockVisibleProvider);
                 final docked = hasDockSpace && dockVisible;
                 final playerWidth = bounds.maxWidth - (docked ? 328.0 : 0.0);
-                final side =
-                    (wide ? bounds.maxHeight * 0.72 : bounds.maxHeight * 0.48)
-                        .clamp(
-                          140.0,
-                          wide
-                              ? (playerWidth * 0.45).clamp(140.0, 440.0)
-                              : 340.0,
-                        )
-                        .toDouble();
+                final side = (wide
+                        ? bounds.maxHeight * 0.72
+                        : bounds.maxHeight * 0.48)
+                    .clamp(140.0, wide
+                        ? (playerWidth * 0.45).clamp(140.0, 440.0)
+                        : 340.0)
+                    .toDouble();
                 final artwork = _CoverArt(
                   size: side,
                   animate: animate,
@@ -139,38 +135,26 @@ class NowPlayingScreen extends ConsumerWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        'REPRODUCIENDO AHORA',
-                        style: Theme.of(context).textTheme.labelMedium
-                            ?.copyWith(
-                              letterSpacing: 1.8,
-                              color: scheme.primary,
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
+                      Text('REPRODUCIENDO AHORA',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          letterSpacing: 1.8, color: scheme.primary,
+                          fontWeight: FontWeight.w800)),
                       const SizedBox(height: 18),
                       _TrackTitles(
                         title: currentTrack.title,
                         artist: currentTrack.displayArtist,
                         animate: animate,
                         onArtistTap: () {
-                          if (currentTrack.displayArtist !=
-                              'Artista desconocido') {
+                          if (currentTrack.displayArtist != 'Artista desconocido') {
                             context.push('/artist', extra: currentTrack);
                           }
                         },
                       ),
                       const SizedBox(height: 5),
-                      Text(
-                        currentTrack.album == 'YouTube Music'
-                            ? 'Canción'
-                            : currentTrack.album,
-                        maxLines: 1,
+                      Text(currentTrack.album == 'YouTube Music' ? 'Canción' : currentTrack.album, maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
+                          color: scheme.onSurfaceVariant)),
                       const SizedBox(height: 14),
                       Wrap(
                         alignment: WrapAlignment.center,
@@ -178,40 +162,23 @@ class NowPlayingScreen extends ConsumerWidget {
                         runSpacing: 8,
                         children: [
                           OutlinedButton.icon(
-                            onPressed: () => ref
-                                .read(musicCollectionProvider.notifier)
+                            onPressed: () => ref.read(musicCollectionProvider.notifier)
                                 .toggleFavorite(currentTrack),
-                            icon: Icon(
-                              ref
-                                      .watch(musicCollectionProvider)
-                                      .isFavorite(currentTrack)
-                                  ? Icons.favorite_rounded
-                                  : Icons.favorite_border_rounded,
-                            ),
-                            label: Text(
-                              ref
-                                      .watch(musicCollectionProvider)
-                                      .isFavorite(currentTrack)
-                                  ? 'En favoritos'
-                                  : 'Me gusta',
-                            ),
+                            icon: Icon(ref.watch(musicCollectionProvider)
+                                .isFavorite(currentTrack)
+                                ? Icons.favorite_rounded : Icons.favorite_border_rounded),
+                            label: Text(ref.watch(musicCollectionProvider)
+                                .isFavorite(currentTrack) ? 'En favoritos' : 'Me gusta'),
                           ),
                           OutlinedButton.icon(
                             onPressed: () => showAddToPlaylistDialog(
-                              context,
-                              ref,
-                              currentTrack,
-                            ),
+                                context, ref, currentTrack),
                             icon: const Icon(Icons.playlist_add_rounded),
                             label: const Text('Añadir a lista'),
                           ),
-                          if (supportsDesktopDownloads &&
-                              currentTrack.id.startsWith('ytmusic:'))
+                          if (supportsDesktopDownloads && currentTrack.id.startsWith('ytmusic:'))
                             OutlinedButton.icon(
-                              onPressed: () => showPermittedDownloadDialog(
-                                context,
-                                currentTrack,
-                              ),
+                                                            onPressed: () => showPermittedDownloadDialog(context, currentTrack),
                               icon: const Icon(Icons.download_rounded),
                               label: const Text('Descargar'),
                             ),
@@ -225,68 +192,51 @@ class NowPlayingScreen extends ConsumerWidget {
                       OutlinedButton.icon(
                         onPressed: () {
                           if (hasDockSpace) {
-                            ref.read(queueDockVisibleProvider.notifier).state =
-                                !dockVisible;
+                            ref.read(queueDockVisibleProvider.notifier).state = !dockVisible;
                           } else {
                             showQueueSheet(context, ref);
                           }
                         },
-                        icon: Icon(
-                          docked
-                              ? Icons.chevron_right_rounded
-                              : Icons.queue_music_rounded,
-                        ),
+                        icon: Icon(docked ? Icons.chevron_right_rounded
+                            : Icons.queue_music_rounded),
                         label: Text(docked ? 'Ocultar cola' : 'Mostrar cola'),
                       ),
                     ],
                   ),
                 );
                 if (wide) {
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(22, 16, 18, 24),
-                          child: Row(
-                            children: [
-                              Expanded(child: Center(child: artwork)),
-                              const SizedBox(width: 18),
-                              Expanded(
-                                child: SingleChildScrollView(
-                                  child: Center(child: details),
-                                ),
-                              ),
-                            ],
-                          ),
+                  return Row(children: [
+                    Expanded(child: Padding(
+                      padding: const EdgeInsets.fromLTRB(22, 16, 18, 24),
+                      child: Row(children: [
+                        Expanded(child: Center(child: artwork)),
+                        const SizedBox(width: 18),
+                        Expanded(child: SingleChildScrollView(
+                          child: Center(child: details))),
+                      ]),
+                    )),
+                    if (docked) ...[
+                      VerticalDivider(width: 1, color: scheme.outlineVariant),
+                      SizedBox(
+                        width: 327,
+                        child: Material(
+                          color: scheme.surfaceContainerLow,
+                          child: _QueueSheet(onClose: () {
+                            ref.read(queueDockVisibleProvider.notifier).state = false;
+                          }),
                         ),
                       ),
-                      if (docked) ...[
-                        VerticalDivider(width: 1, color: scheme.outlineVariant),
-                        SizedBox(
-                          width: 327,
-                          child: Material(
-                            color: scheme.surfaceContainerLow,
-                            child: _QueueSheet(
-                              onClose: () {
-                                ref
-                                        .read(queueDockVisibleProvider.notifier)
-                                        .state =
-                                    false;
-                              },
-                            ),
-                          ),
-                        ),
-                      ],
                     ],
-                  );
+                  ]);
                 }
                 return SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
                   child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [artwork, const SizedBox(height: 24), details],
-                    ),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      artwork,
+                      const SizedBox(height: 24),
+                      details,
+                    ]),
                   ),
                 );
               },
@@ -331,11 +281,7 @@ class _AdaptiveBackground extends StatelessWidget {
 /// carátulas ID3/MP4 llega en Fase 2.x; el widget ya reserva el espacio y
 /// aplica Hero para transiciones fluidas en tiers altos.
 class _CoverArt extends StatelessWidget {
-  const _CoverArt({
-    required this.size,
-    required this.animate,
-    required this.track,
-  });
+  const _CoverArt({required this.size, required this.animate, required this.track});
 
   final double size;
   final bool animate;
@@ -343,11 +289,7 @@ class _CoverArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final art = TrackArtwork(
-      track: track,
-      size: size,
-      radius: animate ? 20 : 10,
-    );
+    final art = TrackArtwork(track: track, size: size, radius: animate ? 20 : 10);
     if (!animate) return art;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 260),
@@ -438,8 +380,7 @@ Future<void> showQueueSheet(BuildContext context, WidgetRef ref) {
     ),
     transitionBuilder: (_, animation, _, child) => SlideTransition(
       position: Tween<Offset>(
-        begin: const Offset(1, 0),
-        end: Offset.zero,
+        begin: const Offset(1, 0), end: Offset.zero,
       ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
       child: child,
     ),
@@ -469,34 +410,26 @@ class _QueueSheet extends ConsumerWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-          child: Row(
-            children: [
-              Icon(Icons.queue_music_rounded, color: scheme.primary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Cola de reproducción',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    Text(
-                      autoRadio
-                          ? '${queue.length} canciones · Radio automática'
-                          : '${queue.length} canciones',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Cerrar cola',
-                onPressed: onClose ?? () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ],
-          ),
+          child: Row(children: [
+            Icon(Icons.queue_music_rounded, color: scheme.primary),
+            const SizedBox(width: 10),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Cola de reproducción',
+                  style: Theme.of(context).textTheme.titleLarge),
+                Text(autoRadio
+                    ? '${queue.length} canciones · Radio automática'
+                    : '${queue.length} canciones',
+                  style: Theme.of(context).textTheme.bodySmall),
+              ],
+            )),
+            IconButton(
+              tooltip: 'Cerrar cola',
+              onPressed: onClose ?? () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ]),
         ),
         const Divider(height: 1),
         Expanded(
@@ -508,37 +441,27 @@ class _QueueSheet extends ConsumerWidget {
                     final track = queue[index];
                     final isCurrent = index == currentIndex;
                     return Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       child: ListTile(
                         selected: isCurrent,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        selectedTileColor: scheme.primaryContainer.withValues(
-                          alpha: 0.35,
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        selectedTileColor: scheme.primaryContainer.withValues(alpha: 0.35),
                         leading: TrackArtwork(track: track, size: 48),
-                        title: Text(
-                          track.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: isCurrent
-                              ? TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: scheme.primary,
-                                )
-                              : null,
-                        ),
-                        subtitle: Text(
-                          track.displayArtist,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        title: Text(track.title, maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: isCurrent
+                                ? TextStyle(fontWeight: FontWeight.bold,
+                                    color: scheme.primary)
+                                : null),
+                        subtitle: Text(track.displayArtist, maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
                         onTap: () => notifier.playAt(index),
-                        trailing: PopupMenuButton<String>(
+                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Text(songDurationLabel(isCurrent
+                              ? (track.duration ?? ref.watch(audioPlayerControllerProvider).duration)
+                              : track.duration),
+                            style: Theme.of(context).textTheme.labelSmall),
+                          PopupMenuButton<String>(
                           tooltip: 'Opciones de la cola',
                           onSelected: (value) {
                             if (value == 'up') {
@@ -551,21 +474,13 @@ class _QueueSheet extends ConsumerWidget {
                           },
                           itemBuilder: (_) => [
                             if (index > 0)
-                              const PopupMenuItem(
-                                value: 'up',
-                                child: Text('Subir'),
-                              ),
+                              const PopupMenuItem(value: 'up', child: Text('Subir')),
                             if (index < queue.length - 1)
-                              const PopupMenuItem(
-                                value: 'down',
-                                child: Text('Bajar'),
-                              ),
-                            const PopupMenuItem(
-                              value: 'remove',
-                              child: Text('Quitar'),
-                            ),
+                              const PopupMenuItem(value: 'down', child: Text('Bajar')),
+                            const PopupMenuItem(value: 'remove', child: Text('Quitar')),
                           ],
                         ),
+                        ]),
                       ),
                     );
                   },
