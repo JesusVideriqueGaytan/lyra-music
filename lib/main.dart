@@ -15,6 +15,7 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lyra_music/app/app.dart';
+import 'package:lyra_music/features/downloads/download_manager.dart';
 import 'package:lyra_music/core/performance/performance_controller.dart';
 import 'package:lyra_music/features/player/presentation/controllers/audio_player_controller.dart'
     show LyraAudioHandler, lyraAudioHandlerProvider;
@@ -24,13 +25,15 @@ Future<void> main() async {
   // disponibles antes de cualquier lectura de hardware.
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Leer el índice de música guardada antes de mostrar portadas y descargas.
+  await LyraDownloadManager.instance.initialize();
+
   // Registrar backend ANTES de crear cualquier AudioPlayer. No habilitarlo
   // en Android/iOS/macOS, donde just_audio usa su backend nativo.
   if (Platform.isLinux || Platform.isWindows) {
     JustAudioMediaKit.title = 'Lyra';
     JustAudioMediaKit.ensureInitialized(
-      linux: Platform.isLinux,
-      windows: Platform.isWindows,
+      linux: Platform.isLinux, windows: Platform.isWindows,
     );
   }
 
@@ -45,7 +48,10 @@ Future<void> main() async {
     await container
         .read(performanceControllerProvider.notifier)
         .waitUntilReady()
-        .timeout(const Duration(seconds: 5), onTimeout: () {});
+        .timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {},
+        );
   } catch (_) {
     // Silencioso a propósito: la app debe arrancar aunque la detección falle.
   }
@@ -75,6 +81,9 @@ Future<void> main() async {
   }
 
   runApp(
-    UncontrolledProviderScope(container: container, child: const LyraApp()),
+    UncontrolledProviderScope(
+      container: container,
+      child: const LyraApp(),
+    ),
   );
 }
