@@ -13,7 +13,14 @@ import 'package:lyra_music/features/player/domain/models/track.dart';
 import 'package:lyra_music/features/ytmusic/data/ytmusic_audio_resolver.dart';
 import 'package:lyra_music/features/ytmusic/data/ytmusic_client.dart';
 
-enum DownloadPhase { queued, resolving, downloading, completed, failed, cancelled }
+enum DownloadPhase {
+  queued,
+  resolving,
+  downloading,
+  completed,
+  failed,
+  cancelled,
+}
 
 class LyraDownloadTask {
   LyraDownloadTask(this.track, {this.phase = DownloadPhase.queued, this.path});
@@ -40,14 +47,21 @@ class LyraDownloadManager extends ChangeNotifier {
   Directory? _root;
   Future<void>? _ready;
 
-  List<LyraDownloadTask> get tasks => _tasks.values.toList().reversed.toList(growable: false);
-  int get activeCount => _tasks.values.where((t) =>
-      t.phase == DownloadPhase.queued || t.phase == DownloadPhase.resolving ||
-      t.phase == DownloadPhase.downloading).length;
+  List<LyraDownloadTask> get tasks =>
+      _tasks.values.toList().reversed.toList(growable: false);
+  int get activeCount => _tasks.values
+      .where(
+        (t) =>
+            t.phase == DownloadPhase.queued ||
+            t.phase == DownloadPhase.resolving ||
+            t.phase == DownloadPhase.downloading,
+      )
+      .length;
   bool isDownloaded(String id) => _savedPaths.containsKey(id);
   bool isPending(String id) {
     final p = _tasks[id]?.phase;
-    return p == DownloadPhase.queued || p == DownloadPhase.resolving ||
+    return p == DownloadPhase.queued ||
+        p == DownloadPhase.resolving ||
         p == DownloadPhase.downloading;
   }
 
@@ -56,7 +70,9 @@ class LyraDownloadManager extends ChangeNotifier {
   Future<Directory> _baseDir() async {
     if (_root != null) return _root!;
     final support = await getApplicationSupportDirectory();
-    final dir = Directory('${support.path}${Platform.pathSeparator}lyra-private-audio');
+    final dir = Directory(
+      '${support.path}${Platform.pathSeparator}lyra-private-audio',
+    );
     await dir.create(recursive: true);
     _root = dir;
     return dir;
@@ -75,18 +91,28 @@ class LyraDownloadManager extends ChangeNotifier {
       if (decoded is! Map || decoded['downloads'] is! List) return;
       final root = await _baseDir();
       for (final item in decoded['downloads'] as List) {
-        if (item is! Map || item['track'] is! Map || item['path'] is! String) continue;
+        if (item is! Map || item['track'] is! Map || item['path'] is! String)
+          continue;
         try {
-          final track = Track.fromMap(Map<String, dynamic>.from(item['track'] as Map));
+          final track = Track.fromMap(
+            Map<String, dynamic>.from(item['track'] as Map),
+          );
           final path = item['path'] as String;
           // Nunca confiar en rutas externas provenientes del índice.
           if (!File(path).absolute.path.startsWith(
-              '${root.absolute.path}${Platform.pathSeparator}')) continue;
+            '${root.absolute.path}${Platform.pathSeparator}',
+          ))
+            continue;
           if (!await File(path).exists()) continue;
           _savedPaths[track.id] = path;
-          _tasks[track.id] = LyraDownloadTask(track,
-            phase: DownloadPhase.completed, path: path);
-        } catch (_) { /* Entrada dañada: ignorar únicamente ese registro. */ }
+          _tasks[track.id] = LyraDownloadTask(
+            track,
+            phase: DownloadPhase.completed,
+            path: path,
+          );
+        } catch (_) {
+          /* Entrada dañada: ignorar únicamente ese registro. */
+        }
       }
       libraryRevision.value++;
       notifyListeners();
@@ -103,20 +129,25 @@ class LyraDownloadManager extends ChangeNotifier {
       final path = _savedPaths[task.track.id];
       if (path != null) items.add({'track': task.track.toMap(), 'path': path});
     }
-    await temp.writeAsString(jsonEncode({'version': 1, 'downloads': items}), flush: true);
+    await temp.writeAsString(
+      jsonEncode({'version': 1, 'downloads': items}),
+      flush: true,
+    );
     if (Platform.isWindows && await file.exists()) await file.delete();
     await temp.rename(file.path);
   }
 
-  bool _compatible(Track track) => track.id.startsWith('ytmusic:') &&
-    RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(track.id.substring(8));
+  bool _compatible(Track track) =>
+      track.id.startsWith('ytmusic:') &&
+      RegExp(r'^[A-Za-z0-9_-]{11}$').hasMatch(track.id.substring(8));
 
   /// Acepta solamente archivos permitidos. Se limita a una tarea por ID.
   Future<int> enqueue(Iterable<Track> songs) async {
     await initialize();
     var added = 0;
     for (final track in songs) {
-      if (!_compatible(track) || isDownloaded(track.id) || isPending(track.id)) continue;
+      if (!_compatible(track) || isDownloaded(track.id) || isPending(track.id))
+        continue;
       _tasks.remove(track.id); // permitir repetir intentos fallidos
       _tasks[track.id] = LyraDownloadTask(track);
       added++;
@@ -142,7 +173,9 @@ class LyraDownloadManager extends ChangeNotifier {
     final root = await _baseDir();
     final file = File(path);
     if (!file.absolute.path.startsWith(
-        '${root.absolute.path}${Platform.pathSeparator}')) return;
+      '${root.absolute.path}${Platform.pathSeparator}',
+    ))
+      return;
     if (await file.exists()) await file.delete();
     _savedPaths.remove(id);
     _tasks.remove(id);
@@ -178,7 +211,10 @@ class LyraDownloadManager extends ChangeNotifier {
       while (true) {
         LyraDownloadTask? task;
         for (final t in _tasks.values) {
-          if (t.phase == DownloadPhase.queued) { task = t; break; }
+          if (t.phase == DownloadPhase.queued) {
+            task = t;
+            break;
+          }
         }
         if (task == null) break;
         _activeId = task.track.id;
@@ -195,7 +231,9 @@ class LyraDownloadManager extends ChangeNotifier {
             try {
               await _persist();
             } catch (e) {
-              debugPrint('Lyra: no se pudo actualizar el índice de descargas: $e');
+              debugPrint(
+                'Lyra: no se pudo actualizar el índice de descargas: $e',
+              );
             }
           }
         } catch (e) {
@@ -211,7 +249,9 @@ class LyraDownloadManager extends ChangeNotifier {
           notifyListeners();
         }
       }
-    } finally { _running = false; }
+    } finally {
+      _running = false;
+    }
   }
 
   static String safeComponent(String text) {
@@ -224,42 +264,65 @@ class LyraDownloadManager extends ChangeNotifier {
   Future<String> _download(LyraDownloadTask task) async {
     final track = task.track;
     final id = track.id.substring(8);
-    final stream = await const YtMusicAudioResolver().resolve(YtMusicSong(
-      videoId: id, title: track.title, artist: track.displayArtist,
-      album: track.album, thumbnail: track.artworkUrl));
-    if (task.phase == DownloadPhase.cancelled) throw const FileSystemException('Cancelada');
+    final stream = await const YtMusicAudioResolver().resolve(
+      YtMusicSong(
+        videoId: id,
+        title: track.title,
+        artist: track.displayArtist,
+        album: track.album,
+        thumbnail: track.artworkUrl,
+      ),
+    );
+    if (task.phase == DownloadPhase.cancelled)
+      throw const FileSystemException('Cancelada');
     final mime = stream.uri.queryParameters['mime'] ?? '';
-    final ext = mime.contains('mp4') ? 'm4a' :
-        mime.contains('mpeg') ? 'mp3' : 'webm';
+    final ext = mime.contains('mp4')
+        ? 'm4a'
+        : mime.contains('mpeg')
+        ? 'mp3'
+        : 'webm';
     final root = await _baseDir();
-    final folder = Directory('${root.path}${Platform.pathSeparator}'
-        '${safeComponent(track.displayArtist)}');
+    final folder = Directory(
+      '${root.path}${Platform.pathSeparator}'
+      '${safeComponent(track.displayArtist)}',
+    );
     await folder.create(recursive: true);
-    final output = File('${folder.path}${Platform.pathSeparator}'
-        '${safeComponent(track.title)} [$id].$ext');
+    final output = File(
+      '${folder.path}${Platform.pathSeparator}'
+      '${safeComponent(track.title)} [$id].$ext',
+    );
     if (await output.exists()) return output.path;
     final partial = File('${output.path}.lyra-part');
     if (await partial.exists()) await partial.delete();
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 20);
     _activeClient = client;
     try {
-      final request = await client.getUrl(stream.uri).timeout(const Duration(seconds: 20));
+      final request = await client
+          .getUrl(stream.uri)
+          .timeout(const Duration(seconds: 20));
       for (final header in stream.headers.entries) {
         if (!header.key.contains('\n') && !header.value.contains('\n')) {
           request.headers.set(header.key, header.value);
         }
       }
-      final response = await request.close().timeout(const Duration(seconds: 25));
+      final response = await request.close().timeout(
+        const Duration(seconds: 25),
+      );
       if (response.statusCode != 200 && response.statusCode != 206) {
         throw HttpException('HTTP ${response.statusCode}');
       }
       if (response.statusCode == 206) {
         final range = response.headers.value('content-range');
-        final match = range == null ? null :
-          RegExp(r'^bytes (\d+)-(\d+)/(\d+)$').firstMatch(range);
-        if (match == null || match.group(1) != '0' ||
+        final match = range == null
+            ? null
+            : RegExp(r'^bytes (\d+)-(\d+)/(\d+)$').firstMatch(range);
+        if (match == null ||
+            match.group(1) != '0' ||
             int.parse(match.group(2)!) + 1 != int.parse(match.group(3)!)) {
-          throw const HttpException('Respuesta parcial, no es el archivo completo');
+          throw const HttpException(
+            'Respuesta parcial, no es el archivo completo',
+          );
         }
       }
       task.phase = DownloadPhase.downloading;
@@ -269,13 +332,17 @@ class LyraDownloadManager extends ChangeNotifier {
       var received = 0;
       final sink = partial.openWrite();
       try {
-        await for (final chunk in response.timeout(const Duration(seconds: 40))) {
+        await for (final chunk in response.timeout(
+          const Duration(seconds: 40),
+        )) {
           if (task.phase == DownloadPhase.cancelled) {
             throw const FileSystemException('Cancelada');
           }
           received += chunk.length;
           if (received > maxBytes) {
-            throw const FileSystemException('El archivo supera el límite de tamaño');
+            throw const FileSystemException(
+              'El archivo supera el límite de tamaño',
+            );
           }
           sink.add(chunk);
           if (expected > 0) {
@@ -288,8 +355,11 @@ class LyraDownloadManager extends ChangeNotifier {
           }
         }
         await sink.flush();
-      } finally { await sink.close(); }
-      if (task.phase == DownloadPhase.cancelled || received == 0 ||
+      } finally {
+        await sink.close();
+      }
+      if (task.phase == DownloadPhase.cancelled ||
+          received == 0 ||
           (expected > 0 && expected != received)) {
         throw const FileSystemException('Descarga interrumpida o incompleta');
       }
@@ -299,6 +369,8 @@ class LyraDownloadManager extends ChangeNotifier {
     } catch (_) {
       if (await partial.exists()) await partial.delete();
       rethrow;
-    } finally { client.close(force: true); }
+    } finally {
+      client.close(force: true);
+    }
   }
 }

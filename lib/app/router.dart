@@ -29,6 +29,7 @@ import 'package:lyra_music/features/library/presentation/screens/listening_stati
 import 'package:lyra_music/features/ytmusic/presentation/artist_screen.dart';
 import 'package:lyra_music/features/player/domain/models/track.dart';
 import 'package:lyra_music/features/downloads/downloads_screen.dart';
+import 'package:lyra_music/features/downloads/download_status_fab.dart';
 
 /// Provider del router: instancia única mientras viva el ProviderScope.
 final routerProvider = Provider<GoRouter>((ref) {
@@ -158,20 +159,21 @@ class _MiniPlayerScaffold extends StatelessWidget {
     final isPlaylist = currentPath.startsWith('/playlist/');
     // El mini reproductor forma parte del layout, sin cubrir contenido ni FAB.
     // Cuando no hay pista, MiniPlayer ocupa cero espacio.
-    final content = Column(
-      children: <Widget>[
+    final content = Stack(children: [
+      Column(children: <Widget>[
         Expanded(child: child ?? const SizedBox.shrink()),
         if (showMiniPlayer) const SafeArea(top: false, child: MiniPlayer()),
-      ],
-    );
+      ]),
+      Positioned(right: 16, bottom: showMiniPlayer ? 92 : 20,
+        child: const DownloadStatusFab()),
+    ]);
     if (!wide) {
       final destination = switch (currentPath) {
         '/home' || '/player' => 0,
         '/explore' => 1,
         '/library' || '/my-music' || '/statistics' => 2,
-        '/downloads' => 3,
         _ when isPlaylist => 2,
-        _ => 4,
+        _ => 3,
       };
       return Material(
         color: scheme.surface,
@@ -185,7 +187,6 @@ class _MiniPlayerScaffold extends StatelessWidget {
                 NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Inicio'),
                 NavigationDestination(icon: Icon(Icons.search_rounded), label: 'Buscar'),
                 NavigationDestination(icon: Icon(Icons.library_music_outlined), label: 'Biblioteca'),
-                NavigationDestination(icon: Icon(Icons.download_outlined), label: 'Descargas'),
                 NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Ajustes'),
               ],
               onDestinationSelected: (value) => context.go(
@@ -193,7 +194,6 @@ class _MiniPlayerScaffold extends StatelessWidget {
                   0 => '/home',
                   1 => '/explore',
                   2 => '/library',
-                  3 => '/downloads',
                   _ => '/preferences',
                 },
               ),
@@ -229,9 +229,6 @@ class _MiniPlayerScaffold extends StatelessWidget {
                   const SizedBox(height: 6),
                   _NavItem(icon: Icons.library_music_rounded, title: 'Biblioteca',
                     selected: currentPath == '/library' || currentPath == '/my-music' || isPlaylist, onTap: () => context.go('/library')),
-                  const SizedBox(height: 6),
-                  _NavItem(icon: Icons.download_rounded, title: 'Descargas',
-                    selected: currentPath == '/downloads', onTap: () => context.go('/downloads')),
                   const SizedBox(height: 6),
                   _NavItem(icon: Icons.bar_chart_rounded, title: 'Estadísticas',
                     selected: currentPath == '/statistics',

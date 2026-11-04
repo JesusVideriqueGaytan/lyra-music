@@ -33,7 +33,8 @@ Future<void> main() async {
   if (Platform.isLinux || Platform.isWindows) {
     JustAudioMediaKit.title = 'Lyra';
     JustAudioMediaKit.ensureInitialized(
-      linux: Platform.isLinux, windows: Platform.isWindows,
+      linux: Platform.isLinux,
+      windows: Platform.isWindows,
     );
   }
 
@@ -48,10 +49,7 @@ Future<void> main() async {
     await container
         .read(performanceControllerProvider.notifier)
         .waitUntilReady()
-        .timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {},
-        );
+        .timeout(const Duration(seconds: 5), onTimeout: () {});
   } catch (_) {
     // Silencioso a propósito: la app debe arrancar aunque la detección falle.
   }
@@ -81,9 +79,6 @@ Future<void> main() async {
   }
 
   runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const LyraApp(),
-    ),
+    UncontrolledProviderScope(container: container, child: const LyraApp()),
   );
 }

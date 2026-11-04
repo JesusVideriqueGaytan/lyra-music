@@ -35,6 +35,7 @@ import 'package:lyra_music/core/performance/performance_controller.dart'
     show currentTierProvider;
 import 'package:lyra_music/core/performance/performance_tier.dart' show PerformanceTier;
 import 'package:lyra_music/features/player/domain/models/track.dart';
+import 'package:lyra_music/features/player/data/playback_session_store.dart';
 import 'package:lyra_music/features/downloads/download_manager.dart';
 import 'package:lyra_music/features/player/domain/models/radio_queue_window.dart';
 import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
@@ -180,6 +181,68 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   late final LyraAudioHandler _handler;
   late final AudioPlayer _player;
   final math.Random _random = math.Random();
+  final PlaybackSessionStore _sessionStore = const PlaybackSessionStore();
+  Timer? _sessionSaveTimer;
+  SavedPlaybackSession? _restoredSession;
+  bool _restoredNeedsSource = false;
+
+  SavedPlaybackSession _captureSession() => SavedPlaybackSession(
+    queue: state.queue, index: state.currentIndex,
+    position: state.position, shuffle: state.shuffleEnabled,
+    repeat: state.repeatMode.index, autoRadio: state.autoRadio,
+  );
+
+  /// Guardado diferido (máximo una escritura cada 3 s); no almacena cada frame.
+  void _scheduleSessionSave() {
+    if (state.queue.isEmpty || _sessionSaveTimer?.isActive == true) return;
+    _sessionSaveTimer = Timer(const Duration(seconds: 3), () {
+      if (state.queue.isNotEmpty) {
+        unawaited(_sessionStore.save(_captureSession()).catchError((Object _) {}));
+      }
+    });
+  }
+
+  Future<void> _restoreLastSession() async {
+    final snapshot = await _sessionStore.load();
+    // El usuario puede haber reproducido algo mientras cargábamos preferencias.
+    if (snapshot == null || _switchGeneration != 0 || state.queue.isNotEmpty) return;
+    _restoredSession = snapshot;
+    _restoredNeedsSource = true;
+    _singleSourceQueue = snapshot.queue.any((t) => t.id.startsWith('ytmusic:'));
+    state = state.copyWith(
+      queue: List<Track>.unmodifiable(snapshot.queue),
+      currentIndex: snapshot.index,
+      position: snapshot.position,
+      duration: snapshot.queue[snapshot.index].duration,
+      autoRadio: snapshot.autoRadio, shuffleEnabled: snapshot.shuffle,
+      repeatMode: RepeatMode.values[snapshot.repeat.clamp(0, RepeatMode.values.length - 1)],
+      playing: false, buffering: false,
+    );
+    _publishQueue(state.queue, state.currentIndex);
+    _scheduleSessionSave();
+  }
+
+  /// No inicia audio al abrir la app: prepara la fuente al primer Play.
+  Future<void> _resumeRestored({int? atIndex}) async {
+    final snapshot = _restoredSession;
+    if (snapshot == null || !_restoredNeedsSource) return;
+    final index = atIndex ?? snapshot.index;
+    final position = index == snapshot.index ? snapshot.position : Duration.zero;
+    _restoredNeedsSource = false;
+    _restoredSession = null;
+    await playQueue(snapshot.queue, startIndex: index, enableRadio: false);
+    if (snapshot.autoRadio) {
+      _radioSeen.addAll(snapshot.queue.map((t) => t.id));
+      _radioRecentlyPlayed.addAll(snapshot.queue.take(index + 1).toList().reversed.take(10).toList().reversed);
+      _radioPlayed.addAll(_radioRecentlyPlayed.map((t) => t.id));
+      state = state.copyWith(autoRadio: true);
+      unawaited(_ensureRadio());
+    }
+    state = state.copyWith(shuffleEnabled: snapshot.shuffle,
+      repeatMode: RepeatMode.values[snapshot.repeat.clamp(0, RepeatMode.values.length - 1)]);
+    if (position > Duration.zero) await seek(position);
+    _scheduleSessionSave();
+  }
 
   /// Suscripción al stream de finalización de pista (para repeat off/one).
   StreamSubscription<void>? _completedSub;
@@ -248,6 +311,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       }
       _rememberActiveDuration();
       _syncPlaybackStateToSystem();
+      _scheduleSessionSave();
     });
 
     // Lógica de repetición al FINALIZAR una pista naturalmente:
@@ -281,6 +345,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       _lastPositionTrack = track?.id;
       _lastPosition = position;
       state = state.copyWith(position: position);
+      _scheduleSessionSave();
       // No publicar sobre D-Bus cada frame: basta con informar cada 2 s.
       final now = DateTime.now();
       if (now.difference(_lastSystemPositionUpdate) >=
@@ -326,6 +391,10 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     });
 
     ref.onDispose(() async {
+      _sessionSaveTimer?.cancel();
+      if (state.queue.isNotEmpty) {
+        unawaited(_sessionStore.save(_captureSession()).catchError((Object _) {}));
+      }
       await _playerStateSub?.cancel();
       await _playerErrorSub?.cancel();
       await _positionSub?.cancel();
@@ -339,6 +408,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     // El resto de inicialización (servicio de audio) es asíncrona:
     // devolvemos estado vacío y exponemos waitUntilReady() para main().
     unawaited(_initAudioService());
+    unawaited(_restoreLastSession());
     return const PlaybackState();
   }
 
@@ -363,6 +433,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     state = state.copyWith(queue: List<Track>.unmodifiable(updated),
         duration: duration);
     ref.read(musicCollectionProvider.notifier).enrichTracks([enriched]);
+    _scheduleSessionSave();
   }
 
   Future<void>? _readyFuture;
@@ -556,6 +627,9 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       return;
     }
 
+    _restoredNeedsSource = false;
+    _restoredSession = null;
+
     final generation = ++_switchGeneration;
     _flushListening();
     // Detener el audio ANTES de resolver el próximo flujo remoto (que puede
@@ -599,6 +673,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     );
     _publishQueue(tracks, safeIndex);
     _syncPlaybackStateToSystem();
+    _scheduleSessionSave();
 
     // Si se seleccionó una sola canción en línea, crear automáticamente una
     // radio de recomendaciones reales. Las playlists explícitas se respetan.
@@ -653,6 +728,10 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   /// Salta directamente a una pista de la cola actual.
   Future<void> playAt(int index) async {
     if (index < 0 || index >= state.queue.length) return;
+    if (_restoredNeedsSource) {
+      await _resumeRestored(atIndex: index);
+      return;
+    }
     final generation = ++_switchGeneration;
     _flushListening();
     try {
@@ -689,6 +768,10 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   }
 
   Future<void> play() async {
+    if (_restoredNeedsSource) {
+      await _resumeRestored();
+      return;
+    }
     try {
       unawaited(_player.play().catchError((Object e, StackTrace _) {
         state = state.copyWith(error: 'No se pudo iniciar el audio. Prueba otra pista.');
@@ -717,9 +800,16 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   }
 
   Future<void> seek(Duration position) async {
+    if (_restoredNeedsSource) {
+      state = state.copyWith(position: position);
+      _restoredSession = _captureSession();
+      _scheduleSessionSave();
+      return;
+    }
     try {
       await _player.seek(position);
       state = state.copyWith(position: position);
+      _scheduleSessionSave();
       _syncPlaybackStateToSystem();
     } catch (e) {
       state = state.copyWith(error: 'Error al buscar posición: $e');
@@ -737,7 +827,15 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   }
 
   Future<void> stop() async {
+    if (_restoredNeedsSource) {
+      state = state.copyWith(playing: false, position: Duration.zero);
+      _restoredSession = _captureSession();
+      _scheduleSessionSave();
+      return;
+    }
     try {
+      _restoredNeedsSource = false;
+      _restoredSession = null;
       ++_radioRequestGeneration;
       ++_switchGeneration;
       _flushListening();
@@ -835,6 +933,11 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   Future<void> toggleShuffle() async {
     final enabled = !state.shuffleEnabled;
     state = state.copyWith(shuffleEnabled: enabled);
+    _scheduleSessionSave();
+    if (_restoredNeedsSource) {
+      _restoredSession = _captureSession();
+      return;
+    }
 
     if (enabled && state.queue.length > 1) {
       // Empezamos una nueva "ruta" aleatoria desde la pista actual.
@@ -858,6 +961,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       RepeatMode.one => RepeatMode.off,
     };
     state = state.copyWith(repeatMode: nextMode);
+    _scheduleSessionSave();
     // repeat=one lo implementamos manualmente en _onCompletion para evitar
     // comportamientos distintos entre plataformas de LoopMode de just_audio.
   }
@@ -874,6 +978,14 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       return;
     }
     final insertIndex = state.currentIndex + 1;
+    if (_restoredNeedsSource) {
+      final updated = <Track>[...state.queue]..insert(insertIndex, track);
+      state = state.copyWith(queue: List<Track>.unmodifiable(updated));
+      _restoredSession = _captureSession();
+      _publishQueue(updated, state.currentIndex);
+      _scheduleSessionSave();
+      return;
+    }
     // En colas locales el motor administra la secuencia real; insertar allí
     // primero evita una divergencia entre la cola visible y just_audio.
     if (!_singleSourceQueue) {
@@ -897,6 +1009,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       clearError: true);
     _publishQueue(updated, state.currentIndex);
     if (state.autoRadio) _balanceRadioWindow();
+    _scheduleSessionSave();
   }
 
   /// Reordena la cola por arrastre; el índice activo sigue a su pista.
@@ -929,6 +1042,13 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       currentIndex: current,
     );
     _publishQueue(reordered, current);
+
+    if (_restoredNeedsSource) {
+      _restoredSession = _captureSession();
+      _scheduleSessionSave();
+      return;
+    }
+    _scheduleSessionSave();
 
     if (_singleSourceQueue) return; // La pista activa ya está cargada.
     // Reconstruimos la fuente para reflejar el nuevo orden en just_audio.
@@ -971,6 +1091,8 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       await stop();
       state = state.copyWith(queue: const <Track>[], autoRadio: false, currentIndex: -1);
       _publishQueue(const <Track>[], -1);
+      _sessionSaveTimer?.cancel();
+      unawaited(_sessionStore.clear().catchError((Object _) {}));
       return;
     }
 
@@ -980,6 +1102,13 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       currentIndex: current,
     );
     _publishQueue(remaining, current);
+
+    if (_restoredNeedsSource) {
+      _restoredSession = _captureSession();
+      _scheduleSessionSave();
+      return;
+    }
+    _scheduleSessionSave();
 
     if (_singleSourceQueue) {
       // The live remote source does not depend on the visible queue. Keep

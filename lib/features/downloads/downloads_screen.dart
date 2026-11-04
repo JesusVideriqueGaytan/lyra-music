@@ -6,15 +6,14 @@ import 'package:lyra_music/features/downloads/download_manager.dart';
 import 'package:lyra_music/features/library/presentation/widgets/track_artwork.dart';
 
 class DownloadsScreen extends StatelessWidget {
-  const DownloadsScreen({super.key});
+  const DownloadsScreen({super.key, this.embedded = false});
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     final manager = LyraDownloadManager.instance;
     final scheme = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Descargas')),
-      body: AnimatedBuilder(animation: manager, builder: (context, _) {
+    final content = AnimatedBuilder(animation: manager, builder: (context, _) {
         final tasks = manager.tasks;
         final active = manager.activeCount;
         final completed = tasks.where((t) => t.phase == DownloadPhase.completed).length;
@@ -98,8 +97,10 @@ class DownloadsScreen extends StatelessWidget {
                     onPressed: () => manager.cancel(task.track.id)),
               ]))),
         ]);
-      }),
-    );
+      });
+    if (embedded) return content;
+    return Scaffold(appBar: AppBar(title: const Text('Descargas')),
+      body: content);
   }
 
   String _label(LyraDownloadTask task) => switch (task.phase) {

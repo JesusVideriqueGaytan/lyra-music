@@ -5,7 +5,6 @@ library;
 
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:lyra_music/features/downloads/download_manager.dart';
 import 'package:lyra_music/features/player/domain/models/track.dart';
 
@@ -53,11 +52,14 @@ Future<void> _enqueue(BuildContext context, List<Track> tracks) async {
   if (!await _confirmIfNeeded(context, needed) || !context.mounted) return;
   final added = await manager.enqueue(compatible);
   if (!context.mounted) return;
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-    content: Text('$added canciones añadidas a Descargas. Puedes seguir usando Lyra.'),
-    action: SnackBarAction(label: 'Ver descargas',
-      onPressed: () => context.go('/downloads')),
-  ));
+  // No mostrar un SnackBar persistente sobre el mini reproductor.
+  // El botón flotante de progreso se actualiza desde DownloadManager.
+  if (added == 0) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      duration: Duration(seconds: 2),
+      content: Text('No hay nuevas canciones que descargar.'),
+    ));
+  }
 }
 
 Future<void> showPermittedDownloadDialog(BuildContext context, Track track) =>
