@@ -23,6 +23,7 @@ class SongActionBar extends StatelessWidget {
     required this.onPlaylist,
     required this.onPlayNext,
     this.onDownload,
+    this.onRemove,
   });
   final Track track;
   final bool favorite;
@@ -30,6 +31,7 @@ class SongActionBar extends StatelessWidget {
   final VoidCallback onPlaylist;
   final VoidCallback onPlayNext;
   final VoidCallback? onDownload;
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -62,19 +64,24 @@ class SongActionBar extends StatelessWidget {
             icon: const Icon(Icons.download_outlined),
             onPressed: onDownload,
           ),
-        PopupMenuButton<String>(
-          tooltip: 'Acciones de cola',
-          icon: const Icon(Icons.more_vert_rounded),
-          onSelected: (value) {
-            if (value == 'next') onPlayNext();
-          },
-          itemBuilder: (_) => [
-            const PopupMenuItem(
-              value: 'next',
-              child: Text('Reproducir a continuación'),
-            ),
-          ],
+        IconButton(
+          tooltip: 'Reproducir a continuación',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.queue_play_next_rounded),
+          onPressed: onPlayNext,
         ),
+        if (onRemove != null)
+          PopupMenuButton<String>(
+            tooltip: 'Más opciones de la playlist',
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (_) => onRemove!(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'remove',
+                child: Text('Quitar de esta playlist'),
+              ),
+            ],
+          ),
       ],
     );
   }

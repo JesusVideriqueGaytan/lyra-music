@@ -36,6 +36,7 @@ import 'package:lyra_music/core/performance/performance_controller.dart'
 import 'package:lyra_music/core/performance/performance_tier.dart'
     show PerformanceTier;
 import 'package:lyra_music/features/player/domain/models/track.dart';
+import 'package:lyra_music/features/player/domain/models/radio_queue_window.dart';
 import 'package:lyra_music/features/library/presentation/controllers/music_collection_controller.dart';
 import 'package:lyra_music/features/ytmusic/data/ytmusic_audio_resolver.dart';
 import 'package:lyra_music/features/ytmusic/data/ytmusic_client.dart';
@@ -186,6 +187,13 @@ class AudioPlayerController extends Notifier<PlaybackState> {
 
   bool _singleSourceQueue = false;
   int _radioRequestGeneration = 0;
+  final RadioQueueWindow _radioWindow = const RadioQueueWindow();
+  final Set<String> _radioSeen = <String>{};
+  final Set<String> _radioPlayed = <String>{};
+  final List<Track> _radioRecentlyPlayed = <Track>[];
+  final Set<String> _radioFailedSeeds = <String>{};
+  List<Track> _radioPending = <Track>[];
+  Future<void>? _radioFetchFuture;
   int _switchGeneration = 0;
   String? _lastRecordedStart;
   String? _lastPositionTrack;
@@ -241,6 +249,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
             .read(musicCollectionProvider.notifier)
             .recordStarted(state.currentTrack!);
       }
+      _rememberActiveDuration();
       _syncPlaybackStateToSystem();
     });
 
@@ -307,6 +316,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       if (d != null && d != state.duration) {
         state = state.copyWith(duration: d);
       }
+      _rememberActiveDuration();
       _syncPlaybackStateToSystem();
     });
 
@@ -338,6 +348,35 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     // devolvemos estado vacío y exponemos waitUntilReady() para main().
     unawaited(_initAudioService());
     return const PlaybackState();
+  }
+
+  /// Persist a newly discovered real duration once per track. This repairs
+  /// older personal playlists that were saved before the catalog included
+  /// durations. Never guess durations from a different (previous) source.
+  void _rememberActiveDuration() {
+    final current = state.currentTrack;
+    final duration = _player.duration;
+    if (current == null ||
+        duration == null ||
+        duration <= Duration.zero ||
+        current.duration == duration ||
+        _player.processingState != ProcessingState.ready ||
+        _lastRecordedStart != current.id)
+      return;
+    final enriched = current.copyWith(duration: duration);
+    if (state.autoRadio) {
+      final historyIndex = _radioRecentlyPlayed.indexWhere(
+        (item) => item.id == enriched.id,
+      );
+      if (historyIndex >= 0) _radioRecentlyPlayed[historyIndex] = enriched;
+    }
+    final updated = <Track>[...state.queue];
+    updated[state.currentIndex] = enriched;
+    state = state.copyWith(
+      queue: List<Track>.unmodifiable(updated),
+      duration: duration,
+    );
+    ref.read(musicCollectionProvider.notifier).enrichTracks([enriched]);
   }
 
   Future<void>? _readyFuture;
@@ -408,42 +447,113 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     );
   }
 
-  /// Añade recomendaciones al final de una cola activa sin reiniciar audio.
-  /// Se limita a una cola de una sola pista remota recién seleccionada.
-  Future<void> _buildAutomaticRadio(Track seed, int requestId) async {
-    try {
-      final id = seed.id.substring('ytmusic:'.length);
-      final suggestions = await const YtMusicClient().getRadioSongs(id);
-      if (requestId != _radioRequestGeneration ||
-          state.queue.length != 1 ||
-          state.queue.first.id != seed.id)
-        return;
-      final unique = <String>{seed.id};
-      final related = <Track>[];
-      for (final song in suggestions) {
-        final songId = 'ytmusic:${song.videoId}';
-        if (!unique.add(songId)) continue;
-        related.add(
-          Track(
-            id: songId,
-            title: song.title,
-            artist: song.artist,
-            artistId: song.artistId,
-            album: song.album,
-            filePath: 'https://music.youtube.com/watch?v=${song.videoId}',
-            artworkUrl: song.thumbnail,
-          ),
-        );
-        if (related.length >= 20) break;
-      }
-      if (related.isEmpty) return;
-      final updated = List<Track>.unmodifiable([seed, ...related]);
-      state = state.copyWith(queue: updated, autoRadio: true);
-      _publishQueue(updated, state.currentIndex);
-    } catch (_) {
-      // La radio es opcional: no debe interrumpir ni marcar como fallida
-      // una pista que ya está sonando si cambió el endpoint remoto.
+  /// Update the 30-slot visible window without touching MPV's active source.
+  /// The already-played IDs are retained for the whole radio session so the
+  /// provider cannot reintroduce a song after it has left the visible queue.
+  void _balanceRadioWindow() {
+    if (!state.autoRadio || !_singleSourceQueue || state.queue.isEmpty) return;
+    final before = state.queue;
+    final previousIndex = state.currentIndex;
+    final snapshot = _radioWindow.rebalance(
+      before,
+      previousIndex,
+      _radioPending,
+      recent: _radioRecentlyPlayed,
+      playedIds: _radioPlayed,
+    );
+    _radioPending = snapshot.pending;
+    if (snapshot.queue.length == before.length &&
+        snapshot.currentIndex == previousIndex &&
+        _sameTrackIds(before, snapshot.queue))
+      return;
+    state = state.copyWith(
+      queue: List<Track>.unmodifiable(snapshot.queue),
+      currentIndex: snapshot.currentIndex,
+    );
+    _publishQueue(state.queue, state.currentIndex);
+  }
+
+  void _markRadioPlayed(Track track) {
+    if (!state.autoRadio) return;
+    _radioPlayed.add(track.id);
+    if (_radioRecentlyPlayed.isNotEmpty &&
+        _radioRecentlyPlayed.last.id == track.id)
+      return;
+    _radioRecentlyPlayed.removeWhere((item) => item.id == track.id);
+    _radioRecentlyPlayed.add(track);
+    if (_radioRecentlyPlayed.length > 10) _radioRecentlyPlayed.removeAt(0);
+  }
+
+  static bool _sameTrackIds(List<Track> first, List<Track> second) {
+    if (first.length != second.length) return false;
+    for (var i = 0; i < first.length; i++) {
+      if (first[i].id != second[i].id) return false;
     }
+    return true;
+  }
+
+  Track _radioTrack(YtMusicSong song) => Track(
+    id: 'ytmusic:${song.videoId}',
+    title: song.title,
+    artist: song.artist,
+    artistId: song.artistId,
+    album: song.album,
+    filePath: 'https://music.youtube.com/watch?v=${song.videoId}',
+    artworkUrl: song.thumbnail,
+    duration: song.duration,
+  );
+
+  /// Load more only when necessary. In the UI there are at most ten tracks
+  /// recently heard (including the current) and twenty to play next.
+  Future<void> _ensureRadio({bool force = false}) {
+    if (!state.autoRadio || !_singleSourceQueue) return Future<void>.value();
+    _balanceRadioWindow();
+    final available = _radioWindow.bufferedAhead(
+      state.queue,
+      state.currentIndex,
+      _radioPending,
+    );
+    if (!force && available >= 8) return Future<void>.value();
+    if (_radioFetchFuture != null) return _radioFetchFuture!;
+    final generation = _radioRequestGeneration;
+    final future = _fetchRadioBatch(generation);
+    _radioFetchFuture = future;
+    return future.whenComplete(() {
+      if (identical(_radioFetchFuture, future)) _radioFetchFuture = null;
+    });
+  }
+
+  Future<void> _fetchRadioBatch(int generation) async {
+    if (state.queue.isEmpty) return;
+    // Use the newest visible suggestion as the next seed; if the provider
+    // repeats its recommendations, try one older seed instead of looping.
+    final candidates = state.queue.reversed
+        .where((t) => t.id.startsWith('ytmusic:'))
+        .where((t) => !_radioFailedSeeds.contains(t.id))
+        .take(2)
+        .toList();
+    for (final seed in candidates) {
+      try {
+        final suggestions = await const YtMusicClient().getRadioSongs(
+          seed.id.substring('ytmusic:'.length),
+        );
+        if (generation != _radioRequestGeneration || !state.autoRadio) return;
+        final unique = _radioWindow.uniqueSuggestions(
+          suggestions.map(_radioTrack),
+          _radioSeen,
+        );
+        _radioPending.addAll(unique);
+        if (unique.isNotEmpty) {
+          _balanceRadioWindow();
+          return;
+        }
+        _radioFailedSeeds.add(seed.id);
+      } catch (_) {
+        if (generation != _radioRequestGeneration || !state.autoRadio) return;
+        _radioFailedSeeds.add(seed.id);
+      }
+    }
+    // No new tracks could be obtained. Keep the playable existing queue.
   }
 
   void _flushListening() {
@@ -474,7 +584,11 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   // ---------------------------------------------------------------------------
 
   /// Reproduce una lista de pistas comenzando en [startIndex].
-  Future<void> playQueue(List<Track> tracks, {int startIndex = 0}) async {
+  Future<void> playQueue(
+    List<Track> tracks, {
+    int startIndex = 0,
+    bool enableRadio = true,
+  }) async {
     if (tracks.isEmpty) {
       state = state.copyWith(error: 'No hay canciones que reproducir.');
       return;
@@ -495,11 +609,27 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       ..clear()
       ..add(safeIndex);
 
+    final isSingleOnlineRadio = _radioWindow.shouldStartRadio(
+      tracks,
+      enabled: enableRadio,
+    );
+    _radioPending = <Track>[];
+    _radioFetchFuture = null;
+    _radioSeen..clear();
+    _radioPlayed..clear();
+    _radioRecentlyPlayed.clear();
+    _radioFailedSeeds.clear();
+    if (isSingleOnlineRadio) {
+      _radioSeen.add(tracks.first.id);
+      _radioPlayed.add(tracks.first.id);
+      _radioRecentlyPlayed.add(tracks.first);
+    }
+
     // Publicamos la cola y los media items ANTES de cargar el audio para que
     // la UI responda de inmediato (degradación elegante en archivos lentos).
     state = state.copyWith(
       queue: List<Track>.unmodifiable(tracks),
-      autoRadio: false,
+      autoRadio: isSingleOnlineRadio,
       currentIndex: safeIndex,
       playing: false,
       buffering: true,
@@ -512,9 +642,9 @@ class AudioPlayerController extends Notifier<PlaybackState> {
 
     // Si se seleccionó una sola canción en línea, crear automáticamente una
     // radio de recomendaciones reales. Las playlists explícitas se respetan.
-    final radioRequest = ++_radioRequestGeneration;
-    if (tracks.length == 1 && tracks.first.id.startsWith('ytmusic:')) {
-      unawaited(_buildAutomaticRadio(tracks.first, radioRequest));
+    ++_radioRequestGeneration;
+    if (isSingleOnlineRadio) {
+      unawaited(_ensureRadio(force: true));
     }
 
     try {
@@ -578,7 +708,13 @@ class AudioPlayerController extends Notifier<PlaybackState> {
         );
         _lastPosition = null;
         _publishQueue(state.queue, index);
-        await _loadSingleIndex(index, generation);
+        if (state.autoRadio) {
+          _markRadioPlayed(state.queue[index]);
+          _balanceRadioWindow();
+          unawaited(_ensureRadio());
+        }
+        // Recalculate index after trimming radio history.
+        await _loadSingleIndex(state.currentIndex, generation);
         return;
       }
       await _player.seek(Duration.zero, index: index);
@@ -673,19 +809,20 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   // ---------------------------------------------------------------------------
 
   Future<void> next() async {
-    final queue = state.queue;
-    if (queue.isEmpty) return;
+    if (state.queue.isEmpty) return;
 
+    if (state.autoRadio) await _ensureRadio();
+    final queue = state.queue;
     if (state.shuffleEnabled) {
       final target = _pickShuffleIndex(excludeCurrent: true);
-      await playAt(target);
+      if (target != state.currentIndex) await playAt(target);
       return;
     }
 
     var target = state.currentIndex + 1;
     if (target >= queue.length) {
-      if (state.repeatMode == RepeatMode.off) {
-        // Fin natural de la lista: nos quedamos en la última pista pausada.
+      if (state.repeatMode == RepeatMode.off || state.autoRadio) {
+        // Radio exhausted or list completed: stop without inventing tracks.
         await stop();
         return;
       }
@@ -729,6 +866,17 @@ class AudioPlayerController extends Notifier<PlaybackState> {
   int _pickShuffleIndex({required bool excludeCurrent}) {
     final length = state.queue.length;
     if (length <= 1) return 0;
+    if (state.autoRadio) {
+      final fresh = <int>[
+        for (var i = 0; i < length; i++)
+          if ((!excludeCurrent || i != state.currentIndex) &&
+              !_radioPlayed.contains(state.queue[i].id))
+            i,
+      ];
+      if (fresh.isNotEmpty) return fresh[_random.nextInt(fresh.length)];
+      // Never automatically replay an already heard song in radio mode.
+      return state.currentIndex;
+    }
     int candidate;
     do {
       candidate = _random.nextInt(length);
@@ -750,7 +898,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
         ..clear()
         ..add(state.currentIndex);
       final next = _pickShuffleIndex(excludeCurrent: true);
-      await playAt(next);
+      if (next != state.currentIndex) await playAt(next);
     } else if (!enabled && state.queue.isNotEmpty) {
       // Al desactivar, volvemos a la posición natural de la cola visible.
       final natural = state.currentIndex;
@@ -804,17 +952,16 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       }
     }
     final updated = <Track>[...state.queue]..insert(insertIndex, track);
-    ++_radioRequestGeneration; // evita que una radio pendiente sobreescriba la cola
+    if (state.autoRadio) _radioSeen.add(track.id);
     state = state.copyWith(
       queue: List<Track>.unmodifiable(updated),
-      autoRadio: false,
       clearError: true,
     );
     _publishQueue(updated, state.currentIndex);
+    if (state.autoRadio) _balanceRadioWindow();
   }
 
-  /// Mueve una pista dentro de la cola (sin drag & drop complejo: botones
-  /// subir/bajar en la pantalla de cola).
+  /// Reordena la cola por arrastre; el índice activo sigue a su pista.
   Future<void> moveInQueue(int oldIndex, int newIndex) async {
     final queue = state.queue;
     if (oldIndex < 0 ||
@@ -858,7 +1005,15 @@ class AudioPlayerController extends Notifier<PlaybackState> {
         initialIndex: current,
         initialPosition: wasPlaying ? resumePosition : Duration.zero,
       );
-      if (wasPlaying) await _player.play();
+      if (wasPlaying) {
+        unawaited(
+          _player.play().catchError((Object e, StackTrace _) {
+            state = state.copyWith(
+              error: 'No se pudo reanudar la cola reordenada.',
+            );
+          }),
+        );
+      }
     } on PlayerInterruptedException catch (_) {
       // Cancelado por una carga más nueva: se ignora.
     } catch (e) {
@@ -871,6 +1026,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     final queue = state.queue;
     if (index < 0 || index >= queue.length) return;
 
+    final wasActive = index == state.currentIndex;
     final remaining = <Track>[...queue]..removeAt(index);
     var current = state.currentIndex;
     if (index < current) current -= 1;
@@ -894,6 +1050,12 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     _publishQueue(remaining, current);
 
     if (_singleSourceQueue) {
+      // The live remote source does not depend on the visible queue. Keep
+      // playing when a different track is removed.
+      if (!wasActive) {
+        if (state.autoRadio) unawaited(_ensureRadio());
+        return;
+      }
       final generation = ++_switchGeneration;
       await _player.stop();
       if (generation != _switchGeneration) return;

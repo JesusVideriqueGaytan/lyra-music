@@ -86,6 +86,61 @@ void main() {
     expect(tracks.single.duration, const Duration(minutes: 3, seconds: 45));
   });
 
+  test('recupera duración desde flexColumns de resultados de búsqueda', () {
+    final tracks = YtMusicClient.parseSongs({
+      'musicResponsiveListItemRenderer': {
+        'playlistItemData': {'videoId': 'abcdefghij9'},
+        'flexColumns': [
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': 'Canción buscada'},
+                ],
+              },
+            },
+          },
+          {
+            'musicResponsiveListItemFlexColumnRenderer': {
+              'text': {
+                'runs': [
+                  {'text': 'Artista'},
+                  {'text': ' • '},
+                  {'text': '3:29'},
+                ],
+              },
+            },
+          },
+        ],
+      },
+    });
+    expect(tracks.single.duration, const Duration(minutes: 3, seconds: 29));
+  });
+
+  test('recupera duración del overlay del vídeo', () {
+    final tracks = YtMusicClient.parseSongs({
+      'playlistPanelVideoRenderer': {
+        'videoId': 'abcdefghij8',
+        'title': {
+          'runs': [
+            {'text': 'Canción de radio'},
+          ],
+        },
+        'longBylineText': {
+          'runs': [
+            {'text': 'Artista'},
+          ],
+        },
+        'thumbnailOverlay': {
+          'thumbnailOverlayTimeStatusRenderer': {
+            'text': {'simpleText': '4:07'},
+          },
+        },
+      },
+    });
+    expect(tracks.single.duration, const Duration(minutes: 4, seconds: 7));
+  });
+
   test('no confunde etiquetas de video con artistas', () {
     final songs = YtMusicClient.parseSongs({
       'musicResponsiveListItemRenderer': {

@@ -91,20 +91,23 @@ class NowPlayingScreen extends ConsumerWidget {
       // mientras exista (el controller lo limpia al reproducir otra pista).
       bottomNavigationBar: error != null
           ? MaterialBanner(
-                content: Text(error),
-                backgroundColor: scheme.errorContainer,
-                actions: <Widget>[
-                  TextButton(
-                    onPressed: () => ref.read(audioPlayerControllerProvider.notifier)
-                      .playAt(ref.read(audioPlayerControllerProvider).currentIndex),
-                    child: const Text('Reintentar'),
-                  ),
-                  TextButton(
-                    onPressed: () => context.go('/library'),
-                    child: const Text('Buscar otra canción'),
-                  ),
-                ],
-              )
+              content: Text(error),
+              backgroundColor: scheme.errorContainer,
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => ref
+                      .read(audioPlayerControllerProvider.notifier)
+                      .playAt(
+                        ref.read(audioPlayerControllerProvider).currentIndex,
+                      ),
+                  child: const Text('Reintentar'),
+                ),
+                TextButton(
+                  onPressed: () => context.go('/library'),
+                  child: const Text('Buscar otra canción'),
+                ),
+              ],
+            )
           : null,
       body: Stack(
         fit: StackFit.expand,
@@ -118,13 +121,15 @@ class NowPlayingScreen extends ConsumerWidget {
                 final dockVisible = ref.watch(queueDockVisibleProvider);
                 final docked = hasDockSpace && dockVisible;
                 final playerWidth = bounds.maxWidth - (docked ? 328.0 : 0.0);
-                final side = (wide
-                        ? bounds.maxHeight * 0.72
-                        : bounds.maxHeight * 0.48)
-                    .clamp(140.0, wide
-                        ? (playerWidth * 0.45).clamp(140.0, 440.0)
-                        : 340.0)
-                    .toDouble();
+                final side =
+                    (wide ? bounds.maxHeight * 0.72 : bounds.maxHeight * 0.48)
+                        .clamp(
+                          140.0,
+                          wide
+                              ? (playerWidth * 0.45).clamp(140.0, 440.0)
+                              : 340.0,
+                        )
+                        .toDouble();
                 final artwork = _CoverArt(
                   size: side,
                   animate: animate,
@@ -135,26 +140,38 @@ class NowPlayingScreen extends ConsumerWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('REPRODUCIENDO AHORA',
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          letterSpacing: 1.8, color: scheme.primary,
-                          fontWeight: FontWeight.w800)),
+                      Text(
+                        'REPRODUCIENDO AHORA',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              letterSpacing: 1.8,
+                              color: scheme.primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
                       const SizedBox(height: 18),
                       _TrackTitles(
                         title: currentTrack.title,
                         artist: currentTrack.displayArtist,
                         animate: animate,
                         onArtistTap: () {
-                          if (currentTrack.displayArtist != 'Artista desconocido') {
+                          if (currentTrack.displayArtist !=
+                              'Artista desconocido') {
                             context.push('/artist', extra: currentTrack);
                           }
                         },
                       ),
                       const SizedBox(height: 5),
-                      Text(currentTrack.album == 'YouTube Music' ? 'Canción' : currentTrack.album, maxLines: 1,
+                      Text(
+                        currentTrack.album == 'YouTube Music'
+                            ? 'Canción'
+                            : currentTrack.album,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant)),
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
                       const SizedBox(height: 14),
                       Wrap(
                         alignment: WrapAlignment.center,
@@ -162,23 +179,40 @@ class NowPlayingScreen extends ConsumerWidget {
                         runSpacing: 8,
                         children: [
                           OutlinedButton.icon(
-                            onPressed: () => ref.read(musicCollectionProvider.notifier)
+                            onPressed: () => ref
+                                .read(musicCollectionProvider.notifier)
                                 .toggleFavorite(currentTrack),
-                            icon: Icon(ref.watch(musicCollectionProvider)
-                                .isFavorite(currentTrack)
-                                ? Icons.favorite_rounded : Icons.favorite_border_rounded),
-                            label: Text(ref.watch(musicCollectionProvider)
-                                .isFavorite(currentTrack) ? 'En favoritos' : 'Me gusta'),
+                            icon: Icon(
+                              ref
+                                      .watch(musicCollectionProvider)
+                                      .isFavorite(currentTrack)
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
+                            ),
+                            label: Text(
+                              ref
+                                      .watch(musicCollectionProvider)
+                                      .isFavorite(currentTrack)
+                                  ? 'En favoritos'
+                                  : 'Me gusta',
+                            ),
                           ),
                           OutlinedButton.icon(
                             onPressed: () => showAddToPlaylistDialog(
-                                context, ref, currentTrack),
+                              context,
+                              ref,
+                              currentTrack,
+                            ),
                             icon: const Icon(Icons.playlist_add_rounded),
                             label: const Text('Añadir a lista'),
                           ),
-                          if (supportsDesktopDownloads && currentTrack.id.startsWith('ytmusic:'))
+                          if (supportsDesktopDownloads &&
+                              currentTrack.id.startsWith('ytmusic:'))
                             OutlinedButton.icon(
-                                                            onPressed: () => showPermittedDownloadDialog(context, currentTrack),
+                              onPressed: () => showPermittedDownloadDialog(
+                                context,
+                                currentTrack,
+                              ),
                               icon: const Icon(Icons.download_rounded),
                               label: const Text('Descargar'),
                             ),
@@ -192,51 +226,92 @@ class NowPlayingScreen extends ConsumerWidget {
                       OutlinedButton.icon(
                         onPressed: () {
                           if (hasDockSpace) {
-                            ref.read(queueDockVisibleProvider.notifier).state = !dockVisible;
+                            ref.read(queueDockVisibleProvider.notifier).state =
+                                !dockVisible;
                           } else {
                             showQueueSheet(context, ref);
                           }
                         },
-                        icon: Icon(docked ? Icons.chevron_right_rounded
-                            : Icons.queue_music_rounded),
+                        icon: Icon(
+                          docked
+                              ? Icons.chevron_right_rounded
+                              : Icons.queue_music_rounded,
+                        ),
                         label: Text(docked ? 'Ocultar cola' : 'Mostrar cola'),
                       ),
                     ],
                   ),
                 );
                 if (wide) {
-                  return Row(children: [
-                    Expanded(child: Padding(
-                      padding: const EdgeInsets.fromLTRB(22, 16, 18, 24),
-                      child: Row(children: [
-                        Expanded(child: Center(child: artwork)),
-                        const SizedBox(width: 18),
-                        Expanded(child: SingleChildScrollView(
-                          child: Center(child: details))),
-                      ]),
-                    )),
-                    if (docked) ...[
-                      VerticalDivider(width: 1, color: scheme.outlineVariant),
-                      SizedBox(
-                        width: 327,
-                        child: Material(
-                          color: scheme.surfaceContainerLow,
-                          child: _QueueSheet(onClose: () {
-                            ref.read(queueDockVisibleProvider.notifier).state = false;
-                          }),
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(22, 16, 18, 24),
+                          child: Row(
+                            children: [
+                              Expanded(child: Center(child: artwork)),
+                              const SizedBox(width: 18),
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  child: Center(child: details),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // Keep the dock mounted while its width animates, so
+                      // opening AND closing visibly slide from the right.
+                      AnimatedContainer(
+                        duration: animate
+                            ? const Duration(milliseconds: 300)
+                            : Duration.zero,
+                        curve: Curves.easeInOutCubic,
+                        width: docked ? 328 : 0,
+                        child: ClipRect(
+                          child: OverflowBox(
+                            alignment: Alignment.centerLeft,
+                            minWidth: 328,
+                            maxWidth: 328,
+                            child: Row(
+                              children: [
+                                VerticalDivider(
+                                  width: 1,
+                                  color: scheme.outlineVariant,
+                                ),
+                                SizedBox(
+                                  width: 327,
+                                  child: Material(
+                                    color: scheme.surfaceContainerLow,
+                                    child: _QueueSheet(
+                                      onClose: () {
+                                        ref
+                                                .read(
+                                                  queueDockVisibleProvider
+                                                      .notifier,
+                                                )
+                                                .state =
+                                            false;
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ],
-                  ]);
+                  );
                 }
                 return SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
                   child: Center(
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      artwork,
-                      const SizedBox(height: 24),
-                      details,
-                    ]),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [artwork, const SizedBox(height: 24), details],
+                    ),
                   ),
                 );
               },
@@ -281,7 +356,11 @@ class _AdaptiveBackground extends StatelessWidget {
 /// carátulas ID3/MP4 llega en Fase 2.x; el widget ya reserva el espacio y
 /// aplica Hero para transiciones fluidas en tiers altos.
 class _CoverArt extends StatelessWidget {
-  const _CoverArt({required this.size, required this.animate, required this.track});
+  const _CoverArt({
+    required this.size,
+    required this.animate,
+    required this.track,
+  });
 
   final double size;
   final bool animate;
@@ -289,7 +368,11 @@ class _CoverArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final art = TrackArtwork(track: track, size: size, radius: animate ? 20 : 10);
+    final art = TrackArtwork(
+      track: track,
+      size: size,
+      radius: animate ? 20 : 10,
+    );
     if (!animate) return art;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 260),
@@ -343,8 +426,7 @@ class _TrackTitles extends StatelessWidget {
   }
 }
 
-/// Bottom sheet con la cola: canción actual resaltada y botones básicos de
-/// reordenar/subir-bajar y quitar (sin drag & drop complejo, según spec).
+/// Cola en un panel lateral/bottom sheet con reordenamiento por arrastre.
 Future<void> showQueueSheet(BuildContext context, WidgetRef ref) {
   final desktop = MediaQuery.sizeOf(context).width >= 760;
   if (!desktop) {
@@ -380,7 +462,8 @@ Future<void> showQueueSheet(BuildContext context, WidgetRef ref) {
     ),
     transitionBuilder: (_, animation, _, child) => SlideTransition(
       position: Tween<Offset>(
-        begin: const Offset(1, 0), end: Offset.zero,
+        begin: const Offset(1, 0),
+        end: Offset.zero,
       ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
       child: child,
     ),
@@ -410,77 +493,153 @@ class _QueueSheet extends ConsumerWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 12, 12),
-          child: Row(children: [
-            Icon(Icons.queue_music_rounded, color: scheme.primary),
-            const SizedBox(width: 10),
-            Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Cola de reproducción',
-                  style: Theme.of(context).textTheme.titleLarge),
-                Text(autoRadio
-                    ? '${queue.length} canciones · Radio automática'
-                    : '${queue.length} canciones',
-                  style: Theme.of(context).textTheme.bodySmall),
-              ],
-            )),
-            IconButton(
-              tooltip: 'Cerrar cola',
-              onPressed: onClose ?? () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close_rounded),
-            ),
-          ]),
+          child: Row(
+            children: [
+              Icon(Icons.queue_music_rounded, color: scheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Cola de reproducción',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    Text(
+                      autoRadio
+                          ? '${queue.length} en pantalla · Radio continua'
+                          : '${queue.length} canciones',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Cerrar cola',
+                onPressed: onClose ?? () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
         ),
         const Divider(height: 1),
         Expanded(
           child: queue.isEmpty
               ? const Center(child: Text('La cola está vacía'))
-              : ListView.builder(
+              : ReorderableListView.builder(
+                  buildDefaultDragHandles: false,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
                   itemCount: queue.length,
+                  onReorder: (oldIndex, newIndex) {
+                    // Flutter's ReorderableListView reports an insertion
+                    // index that includes the dragged item when moving down.
+                    if (newIndex > oldIndex) newIndex -= 1;
+                    notifier.moveInQueue(oldIndex, newIndex);
+                  },
+                  proxyDecorator: (child, index, animation) => Material(
+                    elevation: 8,
+                    borderRadius: BorderRadius.circular(12),
+                    color: scheme.surfaceContainerHigh,
+                    child: child,
+                  ),
                   itemBuilder: (context, index) {
                     final track = queue[index];
                     final isCurrent = index == currentIndex;
                     return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      child: ListTile(
-                        selected: isCurrent,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        selectedTileColor: scheme.primaryContainer.withValues(alpha: 0.35),
-                        leading: TrackArtwork(track: track, size: 48),
-                        title: Text(track.title, maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: isCurrent
-                                ? TextStyle(fontWeight: FontWeight.bold,
-                                    color: scheme.primary)
-                                : null),
-                        subtitle: Text(track.displayArtist, maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        onTap: () => notifier.playAt(index),
-                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Text(songDurationLabel(isCurrent
-                              ? (track.duration ?? ref.watch(audioPlayerControllerProvider).duration)
-                              : track.duration),
-                            style: Theme.of(context).textTheme.labelSmall),
-                          PopupMenuButton<String>(
-                          tooltip: 'Opciones de la cola',
-                          onSelected: (value) {
-                            if (value == 'up') {
-                              notifier.moveInQueue(index, index - 1);
-                            } else if (value == 'down') {
-                              notifier.moveInQueue(index, index + 1);
-                            } else if (value == 'remove') {
-                              notifier.removeFromQueue(index);
-                            }
-                          },
-                          itemBuilder: (_) => [
-                            if (index > 0)
-                              const PopupMenuItem(value: 'up', child: Text('Subir')),
-                            if (index < queue.length - 1)
-                              const PopupMenuItem(value: 'down', child: Text('Bajar')),
-                            const PopupMenuItem(value: 'remove', child: Text('Quitar')),
-                          ],
+                      key: ValueKey('${track.id}#${index}'),
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Material(
+                        color: isCurrent
+                            ? scheme.primaryContainer.withValues(alpha: 0.40)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => notifier.playAt(index),
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(7, 7, 2, 7),
+                            child: Row(
+                              children: [
+                                TrackArtwork(track: track, size: 44),
+                                const SizedBox(width: 9),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        track.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: isCurrent
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                          color: isCurrent
+                                              ? scheme.primary
+                                              : null,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        track.displayArtist,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.labelSmall,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  songDurationLabel(
+                                    isCurrent
+                                        ? (track.duration ??
+                                              ref
+                                                  .watch(
+                                                    audioPlayerControllerProvider,
+                                                  )
+                                                  .duration)
+                                        : track.duration,
+                                  ),
+                                  style: Theme.of(context).textTheme.labelSmall,
+                                ),
+                                ReorderableDragStartListener(
+                                  index: index,
+                                  child: Tooltip(
+                                    message: 'Arrastrar para reordenar',
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(6),
+                                      child: Icon(
+                                        Icons.drag_indicator_rounded,
+                                        size: 20,
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Quitar de la cola',
+                                  visualDensity: VisualDensity.compact,
+                                  iconSize: 17,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 28,
+                                    minHeight: 36,
+                                  ),
+                                  onPressed: () =>
+                                      notifier.removeFromQueue(index),
+                                  icon: const Icon(Icons.close_rounded),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                        ]),
                       ),
                     );
                   },
