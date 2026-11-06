@@ -19,6 +19,8 @@ class SavedPlaybackSession {
     required this.shuffle,
     required this.repeat,
     required this.autoRadio,
+    this.radioPlayedIds,
+    this.radioRecentIds,
   });
   final List<Track> queue;
   final int index;
@@ -26,6 +28,11 @@ class SavedPlaybackSession {
   final bool shuffle;
   final int repeat;
   final bool autoRadio;
+
+  /// null = sesión antigua: sus canciones previas se consideran escuchadas.
+  /// Una lista vacía en una sesión nueva significa lo contrario.
+  final List<String>? radioPlayedIds;
+  final List<String>? radioRecentIds;
 
   Map<String, Object?> toMap() => {
     'version': 1,
@@ -35,6 +42,10 @@ class SavedPlaybackSession {
     'shuffle': shuffle,
     'repeat': repeat,
     'autoRadio': autoRadio,
+    if (autoRadio && radioPlayedIds != null)
+      'radioPlayedIds': radioPlayedIds!.take(500).toList(),
+    if (autoRadio && radioRecentIds != null)
+      'radioRecentIds': radioRecentIds!.take(11).toList(),
   };
 
   factory SavedPlaybackSession.fromMap(Map<String, dynamic> map) {
@@ -75,8 +86,20 @@ class SavedPlaybackSession {
       shuffle: map['shuffle'] == true,
       repeat: (map['repeat'] as num?)?.toInt() ?? 0,
       autoRadio: map['autoRadio'] == true,
+      radioPlayedIds: _safeIds(map['radioPlayedIds'], 500),
+      radioRecentIds: _safeIds(map['radioRecentIds'], 11),
     );
   }
+}
+
+/// Mantiene compatibilidad con sesiones antiguas y descarta registros malformados.
+List<String>? _safeIds(dynamic value, int limit) {
+  if (value is! List) return null;
+  return value
+      .whereType<String>()
+      .where((id) => id.isNotEmpty && id.length < 256)
+      .take(limit)
+      .toList(growable: false);
 }
 
 class PlaybackSessionStore {

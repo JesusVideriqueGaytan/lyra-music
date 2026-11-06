@@ -195,6 +195,10 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     shuffle: state.shuffleEnabled,
     repeat: state.repeatMode.index,
     autoRadio: state.autoRadio,
+    radioPlayedIds: state.autoRadio ? _radioPlayed.toList() : null,
+    radioRecentIds: state.autoRadio
+        ? _radioRecentlyPlayed.map((t) => t.id).toList()
+        : null,
   );
 
   /// Guardado diferido (máximo una escritura cada 3 s); no almacena cada frame.
@@ -246,16 +250,37 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     await playQueue(snapshot.queue, startIndex: index, enableRadio: false);
     if (snapshot.autoRadio) {
       _radioSeen.addAll(snapshot.queue.map((t) => t.id));
-      _radioRecentlyPlayed.addAll(
-        snapshot.queue
-            .take(index + 1)
-            .toList()
-            .reversed
-            .take(11)
-            .toList()
-            .reversed,
-      );
-      _radioPlayed.addAll(_radioRecentlyPlayed.map((t) => t.id));
+      // Al restaurar, las omitidas nunca se convierten en escuchadas.
+      // Las sesiones antiguas mantienen una ruta de compatibilidad.
+      final persistedPlayed = snapshot.radioPlayedIds;
+      if (persistedPlayed == null) {
+        _radioRecentlyPlayed.addAll(
+          snapshot.queue
+              .take(index + 1)
+              .toList()
+              .reversed
+              .take(11)
+              .toList()
+              .reversed,
+        );
+        _radioPlayed.addAll(_radioRecentlyPlayed.map((t) => t.id));
+      } else {
+        _radioPlayed.addAll(persistedPlayed);
+        final byId = <String, Track>{
+          for (final track in snapshot.queue) track.id: track,
+        };
+        final recentIds =
+            snapshot.radioRecentIds ??
+            snapshot.queue
+                .take(index + 1)
+                .where((t) => _radioPlayed.contains(t.id))
+                .map((t) => t.id)
+                .toList();
+        for (final id in recentIds) {
+          final track = byId[id];
+          if (track != null) _radioRecentlyPlayed.add(track);
+        }
+      }
       // Una copia futura del mismo ID es una repetición manual pendiente.
       for (final track in snapshot.queue.skip(index + 1)) {
         if (_radioPlayed.contains(track.id)) {
