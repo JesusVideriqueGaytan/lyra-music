@@ -34,16 +34,30 @@ class SavedPlaybackSession {
     for (final item in (map['queue'] as List? ?? const []).take(500)) {
       try {
         if (item is Map) {
-          queue.add(Track.fromMap(Map<String, dynamic>.from(item)));
+          final track = Track.fromMap(Map<String, dynamic>.from(item));
+          if (track.id.trim().isNotEmpty && track.title.trim().isNotEmpty &&
+              (track.id.startsWith('ytmusic:') || track.filePath.isNotEmpty)) {
+            queue.add(track);
+          }
         }
       } catch (_) { /* Saltar registros dañados. */ }
     }
     final requestedIndex = (map['index'] as num?)?.toInt() ?? 0;
     final index = queue.isEmpty ? -1 : requestedIndex.clamp(0, queue.length - 1);
     final milliseconds = (map['positionMs'] as num?)?.toInt() ?? 0;
+    var safePosition = Duration(milliseconds: milliseconds.clamp(0, 86400000));
+    // No reanudar encima del final de una canción ya terminada: evitar un
+    // salto automático o un estado completed al pulsar Reproducir.
+    if (index >= 0 && queue[index].duration != null) {
+      final end = queue[index].duration!;
+      if (end > const Duration(seconds: 2) &&
+          safePosition >= end - const Duration(seconds: 1)) {
+        safePosition = Duration.zero;
+      }
+    }
     return SavedPlaybackSession(
       queue: queue, index: index,
-      position: Duration(milliseconds: milliseconds.clamp(0, 86400000)),
+      position: safePosition,
       shuffle: map['shuffle'] == true,
       repeat: (map['repeat'] as num?)?.toInt() ?? 0,
       autoRadio: map['autoRadio'] == true,

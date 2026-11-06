@@ -601,6 +601,18 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     }
   }
 
+  /// Evita errores fantasma y spinners permanentes cuando falla un enlace.
+  /// La generación protege una canción nueva de respuestas de otra anterior.
+  void _reportLoadFailure(Object error, Track track, int generation) {
+    if (generation != _switchGeneration) return;
+    state = state.copyWith(
+      playing: false,
+      buffering: false,
+      error: _humanizePlayerError(error, track),
+    );
+    _syncPlaybackStateToSystem();
+  }
+
   Future<void> _loadSingleIndex(int index, int generation) async {
     final track = state.queue[index];
     final source = await _sourceForPlayback(track);
@@ -609,7 +621,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     if (generation != _switchGeneration) return;
     // No esperes el Future de play(): solo finaliza al pausar o terminar.
     unawaited(_player.play().catchError((Object e, StackTrace _) {
-      state = state.copyWith(error: _humanizePlayerError(e, track));
+      _reportLoadFailure(e, track, generation);
     }));
   }
 
@@ -623,7 +635,7 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     bool enableRadio = true,
   }) async {
     if (tracks.isEmpty) {
-      state = state.copyWith(error: 'No hay canciones que reproducir.');
+      state = state.copyWith(playing: false, buffering: false, error: 'No hay canciones que reproducir.');
       return;
     }
 
@@ -634,7 +646,13 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     _flushListening();
     // Detener el audio ANTES de resolver el próximo flujo remoto (que puede
     // tardar varios segundos). Nunca mezclar la pista vieja con la nueva.
-    await _player.stop();
+    try {
+      await _player.stop();
+    } catch (e) {
+      _reportLoadFailure(e, tracks[startIndex.clamp(0, tracks.length - 1)],
+        generation);
+      return;
+    }
     if (generation != _switchGeneration) return;
     final safeIndex = startIndex.clamp(0, tracks.length - 1);
     _singleSourceQueue = tracks.any((t) => t.id.startsWith('ytmusic:'));
@@ -703,31 +721,24 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       // detiene o termina, NO cuando empieza. No bloquear la interfaz ni el
       // spinner de la búsqueda durante toda la canción.
       unawaited(_player.play().catchError((Object e, StackTrace stack) {
-        state = state.copyWith(
-          error: _humanizePlayerError(e, tracks[safeIndex]),
-        );
+        _reportLoadFailure(e, tracks[safeIndex], generation);
       }));
     } on PlayerInterruptedException catch (_) {
       // Otra carga más reciente ganó la carrera: NO es un error real, se
       // ignora silenciosamente (comportamiento documentado por el plugin).
     } on PlayerException catch (e) {
-      if (generation != _switchGeneration) return;
-      state = state.copyWith(
-        error: _humanizePlayerError(e, tracks[safeIndex]),
-      );
+      _reportLoadFailure(e, tracks[safeIndex], generation);
     } on FileSystemException catch (e) {
-      state = state.copyWith(
-        error: 'Archivo no encontrado: ${e.path ?? tracks[safeIndex].filePath}',
-      );
+      _reportLoadFailure(e, tracks[safeIndex], generation);
     } catch (e) {
-      if (generation != _switchGeneration) return;
-      state = state.copyWith(error: _humanizePlayerError(e, tracks[safeIndex]));
+      _reportLoadFailure(e, tracks[safeIndex], generation);
     }
   }
 
   /// Salta directamente a una pista de la cola actual.
   Future<void> playAt(int index) async {
     if (index < 0 || index >= state.queue.length) return;
+    final requestedTrack = state.queue[index];
     if (_restoredNeedsSource) {
       await _resumeRestored(atIndex: index);
       return;
@@ -759,11 +770,10 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       state = state.copyWith(currentIndex: index, clearError: true);
       // play() finishes when playback ends, so do not await here.
       unawaited(_player.play().catchError((Object e, StackTrace _) {
-        state = state.copyWith(error: _humanizePlayerError(e, state.queue[index]));
+        _reportLoadFailure(e, requestedTrack, generation);
       }));
     } catch (e) {
-      if (generation != _switchGeneration) return;
-      state = state.copyWith(error: _humanizePlayerError(e, state.queue[index]));
+      _reportLoadFailure(e, requestedTrack, generation);
     }
   }
 
@@ -772,12 +782,16 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       await _resumeRestored();
       return;
     }
+    final generation = _switchGeneration;
     try {
       unawaited(_player.play().catchError((Object e, StackTrace _) {
-        state = state.copyWith(error: 'No se pudo iniciar el audio. Prueba otra pista.');
+        if (generation != _switchGeneration) return;
+        final track = state.currentTrack;
+        if (track != null) _reportLoadFailure(e, track, generation);
       }));
     } catch (e) {
-      state = state.copyWith(error: 'No se pudo iniciar el audio. Prueba otra pista.');
+      final track = state.currentTrack;
+      if (track != null) _reportLoadFailure(e, track, generation);
     }
   }
 

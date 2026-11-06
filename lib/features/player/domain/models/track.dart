@@ -7,6 +7,8 @@ library;
 
 import 'dart:io';
 
+import 'package:lyra_music/core/metadata/artist_name.dart';
+
 /// Formatos de audio soportados por Lyra en reproducción local.
 const List<String> kSupportedAudioExtensions = <String>[
   '.mp3',
@@ -47,14 +49,10 @@ class Track {
 
   /// Etiqueta segura para pistas guardadas con metadatos incompletos.
   /// En resultados antiguos una duración (p.ej. 2:54) quedó como artista.
-  String get displayArtist {
-    final value = artist.trim();
-    if (value.isEmpty ||
-        RegExp(r'^\d{1,2}:\d{2}(?::\d{2})?$').hasMatch(value)) {
-      return 'Artista desconocido';
-    }
-    return value;
-  }
+  String get displayArtist => isUsableArtistName(artist)
+      ? artist.trim()
+      : 'Artista desconocido';
+
 
   /// Álbum conocido o "Álbum desconocido".
   final String album;
@@ -110,9 +108,8 @@ class Track {
   factory Track.fromFilePath(String path) {
     final fileName = path.split(Platform.pathSeparator).last;
     final dotIndex = fileName.lastIndexOf('.');
-    final cleanTitle = dotIndex > 0
-        ? fileName.substring(0, dotIndex)
-        : fileName;
+    final cleanTitle =
+        dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
 
     // Convención habitual "Artist - Title.mp3": si el nombre contiene " - "
     // lo interpretamos como artista + título para mejorar la UI sin leer

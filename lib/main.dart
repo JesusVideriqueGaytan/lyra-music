@@ -7,7 +7,7 @@
 /// adaptativo definidos en `lib/app/app.dart`.
 library;
 
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, Directory;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +15,7 @@ import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:lyra_music/app/app.dart';
+import 'package:lyra_music/core/audio/mpv_cache_path.dart';
 import 'package:lyra_music/features/downloads/download_manager.dart';
 import 'package:lyra_music/core/performance/performance_controller.dart';
 import 'package:lyra_music/features/player/presentation/controllers/audio_player_controller.dart'
@@ -28,13 +29,27 @@ Future<void> main() async {
   // Leer el índice de música guardada antes de mostrar portadas y descargas.
   await LyraDownloadManager.instance.initialize();
 
+  // Si falta la carpeta de caché por defecto de libmpv, crearla sin
+  // sobrescribir archivos. Esto puede resolver fallos de permisos/ruta,
+  // pero NO reemplaza el diagnóstico del aviso "Failed to create file cache".
+  // Se omite en Android, iOS, macOS y Windows.
+  if (Platform.isLinux) {
+    final cachePath = linuxMpvCacheDirectory(Platform.environment);
+    if (cachePath != null) {
+      try {
+        await Directory(cachePath).create(recursive: true);
+      } catch (_) {
+        // La falta de permisos de caché no debe impedir abrir Lyra.
+      }
+    }
+  }
+
   // Registrar backend ANTES de crear cualquier AudioPlayer. No habilitarlo
   // en Android/iOS/macOS, donde just_audio usa su backend nativo.
   if (Platform.isLinux || Platform.isWindows) {
     JustAudioMediaKit.title = 'Lyra';
     JustAudioMediaKit.ensureInitialized(
-      linux: Platform.isLinux,
-      windows: Platform.isWindows,
+      linux: Platform.isLinux, windows: Platform.isWindows,
     );
   }
 
@@ -49,7 +64,10 @@ Future<void> main() async {
     await container
         .read(performanceControllerProvider.notifier)
         .waitUntilReady()
-        .timeout(const Duration(seconds: 5), onTimeout: () {});
+        .timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {},
+        );
   } catch (_) {
     // Silencioso a propósito: la app debe arrancar aunque la detección falle.
   }
@@ -79,6 +97,9 @@ Future<void> main() async {
   }
 
   runApp(
-    UncontrolledProviderScope(container: container, child: const LyraApp()),
+    UncontrolledProviderScope(
+      container: container,
+      child: const LyraApp(),
+    ),
   );
 }

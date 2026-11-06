@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lyra_music/features/player/domain/models/track.dart';
+import 'package:lyra_music/core/metadata/artist_name.dart';
 
 const _storageKey = 'lyra_music_collection_v1';
 /// Playlist de favoritos virtual. No se serializa como playlist normal y
@@ -31,13 +32,7 @@ Track persistentTrack(Track track) {
 
 /// Conserva metadatos válidos previos y repara solo valores incompletos.
 /// El ID estable permite actualizar historial, playlists y favoritos juntos.
-bool hasKnownArtist(String text) {
-  final name = text.trim().toLowerCase();
-  return name.isNotEmpty && name != 'artista desconocido' &&
-      name != 'unknown artist' && name != 'vídeo' && name != 'video' &&
-      name != 'canción' && name != 'song' &&
-      !RegExp(r'^\d{1,3}:\d{2}(?::\d{2})?$').hasMatch(name);
-}
+bool hasKnownArtist(String text) => isUsableArtistName(text);
 
 Track mergeTrackMetadata(Track original, Track fresh) {
   if (original.id != fresh.id) return original;
