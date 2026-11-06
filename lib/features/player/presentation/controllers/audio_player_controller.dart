@@ -405,11 +405,11 @@ class AudioPlayerController extends Notifier<PlaybackState> {
       await _player.dispose();
     });
 
-    // El resto de inicialización (servicio de audio) es asíncrona:
-    // devolvemos estado vacío y exponemos waitUntilReady() para main().
-    unawaited(_initAudioService());
+    // El AudioHandler ya está vinculado a este controller en build().
+    // No leer state hasta que Riverpod haya recibido el estado inicial.
+    // La restauración sí es asíncrona y se ejecuta tras el primer await.
     unawaited(_restoreLastSession());
-    return const PlaybackState();
+    return const PlaybackState(handlerReady: true);
   }
 
   /// Persist a newly discovered real duration once per track. This repairs
@@ -436,8 +436,6 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     _scheduleSessionSave();
   }
 
-  Future<void>? _readyFuture;
-
   /// Precarga de cola completa solo en tiers high/ultra (la detección de
   // hardware puede haber terminado DESPUÉS de construir el AudioPlayer, por
   // eso recalculamos el modo de carga antes de cada setAudioSources).
@@ -446,19 +444,9 @@ class AudioPlayerController extends Notifier<PlaybackState> {
     return tier == PerformanceTier.high || tier == PerformanceTier.ultra;
   }
 
-  /// Espera a que el handler de audio_service esté registrado. Usado en
-  /// `main()` y en tests para arrancar de forma determinista.
-  Future<void> waitUntilReady() => _readyFuture ??= _initAudioService();
-
-  Future<void> _initAudioService() async {
-    try {
-      // AudioService.init se registra en main() cuando hay plataforma MPRIS.
-      // Este indicador solo declara que el controlador puede aceptar órdenes.
-      state = state.copyWith(handlerReady: true);
-    } catch (e) {
-      state = state.copyWith(error: 'Servicio de audio no disponible: $e');
-    }
-  }
+  /// El handler queda vinculado de forma síncrona durante build().
+  /// La integración MPRIS se registra aparte en main.dart.
+  Future<void> waitUntilReady() => Future<void>.value();
 
   // Fuente unificada para archivos locales y flujos HTTPS. Las referencias
   // remotas se resuelven de nuevo inmediatamente antes de reproducir.

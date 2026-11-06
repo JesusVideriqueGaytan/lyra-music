@@ -1,86 +1,49 @@
 #!/usr/bin/env python3
-"""Diagnóstico SOLO LECTURA de la configuración libmpv de Lyra 4.8.1/4.8.2.
-
-Comprueba la resolución real de just_audio_media_kit sin abrir ni
-modificar el reproductor, los archivos de música o el sistema.
-"""
+"""Lyra: comprueba la resolución real del adaptador MPV (solo lectura)."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
+import json
 import sys
-from urllib.parse import urlparse, unquote
 
-ROOT = Path(__file__).resolve().parents[1]
-MARKER = "setProperty(_player, 'cache-on-disk', 'no')"
-VENDOR = Path('third_party/just_audio_media_kit')
-
-
-def resolved_package(project: Path) -> Path | None:
-    config = project / '.dart_tool/package_config.json'
-    if not config.is_file():
-        return None
-    packages = json.loads(config.read_text(encoding='utf-8')).get('packages', [])
-    item = next((p for p in packages if p.get('name') == 'just_audio_media_kit'), None)
-    if item is None:
-        return None
-    uri = item.get('rootUri', '')
-    parsed = urlparse(uri)
-    if parsed.scheme == 'file':
-        return Path(unquote(parsed.path)).resolve()
-    if not parsed.scheme:
-        return (config.parent / unquote(uri)).resolve()
-    return None
+from configurar_cache_mpv_481 import (
+    find_installed_package, locate_player_source, MARKER, PROJECT, VENDOR_REL,
+)
 
 
 def diagnosis(project: Path) -> tuple[bool, list[str]]:
-    lines = ['Lyra: verificación del adaptador MPV (solo lectura).']
-    pubspec = project / 'pubspec.yaml'
-    if not pubspec.is_file():
+    lines = ['Lyra: diagnóstico MPV y adaptador (solo lectura).']
+    spec = project / 'pubspec.yaml'
+    if not spec.is_file():
         return False, lines + ['No existe pubspec.yaml.']
-    content = pubspec.read_text(encoding='utf-8')
-    override = 'path: third_party/just_audio_media_kit' in content
-    lines.append('Override local en pubspec.yaml: ' + ('SÍ' if override else 'NO'))
-    package = resolved_package(project)
-    if package is None:
-        return False, lines + [
-            'Sin ruta resuelta: ejecuta flutter pub get y repite la prueba.'
-        ]
-    vendor = (project / VENDOR).resolve()
-    matches = package == vendor
-    lines.append('Paquete usado por Flutter: ' + str(package))
-    lines.append('Es la copia local: ' + ('SÍ' if matches else 'NO'))
-    source = package / 'lib/src/mediakit_player.dart'
-    if not source.is_file():
-        return False, lines + ['No existe el archivo mediakit_player.dart.']
-    patched = MARKER in source.read_text(encoding='utf-8')
-    lines.append('Propiedad cache-on-disk=no en el código usado: ' +
-                 ('SÍ' if patched else 'NO'))
-    ready = 'Future<void> ready() async' in source.read_text(encoding='utf-8')
-    lines.append('Método ready() modificado por Lyra 4.8.1: ' +
-                 ('SÍ' if ready else 'NO'))
-    active = override and matches and patched and ready
-    if active:
-        lines.append('RESULTADO: el parche está resuelto en el código de Flutter.')
-        lines.append('Si MPV sigue registrando el aviso, no está demostrado que')
-        lines.append('la propiedad esté siendo aceptada por libmpv en ejecución.')
-        lines.append('Conviene revisar la inicialización nativa, no los permisos de ~/cache.')
+    active_spec = 'path: third_party/just_audio_media_kit' in spec.read_text(encoding='utf-8')
+    lines.append('Override local en pubspec.yaml: ' + ('SÍ' if active_spec else 'NO'))
+    try:
+        pkg = find_installed_package(project)
+        lines.append(f'Dependencia efectiva: {pkg}')
+        relative = pkg.resolve() == (project / VENDOR_REL).resolve()
+        lines.append('Flutter usa la copia del proyecto: ' + ('SÍ' if relative else 'NO'))
+        src = locate_player_source(pkg)
+        lines.append('Fuente del reproductor: ' + str(src.relative_to(pkg)))
+        data = src.read_text(encoding='utf-8')
+        patched = MARKER in data and "await setProperty(_player, 'cache-on-disk', 'no')" in data
+        lines.append('Ajuste cache-on-disk presente: ' + ('SÍ' if patched else 'NO'))
+        enabled = active_spec and relative and patched
+    except (RuntimeError, OSError, json.JSONDecodeError, ValueError) as error:
+        return False, lines + [f'No se pudo verificar la fuente: {error}']
+    if enabled:
+        lines.append('Código seleccionado: PATCH ACTIVO.')
+        lines.append('Este análisis no prueba que libmpv acepte la propiedad en ejecución.')
     else:
-        lines.append('RESULTADO: el parche 4.8.1 NO está completamente activo.')
-        lines.append('Consulta LEEME_LYRA_4_8_1_CACHE_MPV.md antes de reintentar.')
-    return active, lines
+        lines.append('Código seleccionado: PARCHE NO ACTIVO.')
+    return enabled, lines
 
 
 def main() -> int:
-    try:
-        active, lines = diagnosis(ROOT)
-        print('\n'.join(lines))
-        # No es error fatal si no está aplicado: herramienta informativa.
-        return 0
-    except (OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
-        print(f'No pudo completarse la verificación: {exc}', file=sys.stderr)
-        return 1
+    _, lines = diagnosis(PROJECT)
+    print('\n'.join(lines))
+    return 0
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    sys.exit(main())

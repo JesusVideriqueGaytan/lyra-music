@@ -119,3 +119,7 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+dependency_overrides:
+  just_audio_media_kit:
+    path: third_party/just_audio_media_kit

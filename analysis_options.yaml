@@ -9,6 +9,7 @@
 # packages, and plugins designed to encourage good coding practices.
 analyzer:
   exclude:
+    - third_party/just_audio_media_kit/**
     - build/**
     - android/**
     - ios/**
