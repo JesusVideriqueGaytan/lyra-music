@@ -9,6 +9,8 @@
 ///    high/ultra (estilo de transición leído de la matriz).
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -471,8 +473,9 @@ Future<void> showQueueSheet(BuildContext context, WidgetRef ref) {
   );
 }
 
-/// Panel de cola: pista actual primero, próximas después y anteriores al final.
-/// Es solo una proyección visual; la cola real y sus índices no se alteran.
+/// Panel de cola: escuchadas antes, actual, próximas después.
+/// Se abre desplazado a la canción actual; el historial aparece al subir.
+/// La cola real y sus índices no se alteran al mostrar la interfaz.
 class _QueueSheet extends ConsumerStatefulWidget {
   const _QueueSheet({this.onClose});
 
@@ -483,16 +486,30 @@ class _QueueSheet extends ConsumerStatefulWidget {
 }
 
 class _QueueSheetState extends ConsumerState<_QueueSheet> {
+  static const double _rowHeight = 72;
   final ScrollController _scrollController = ScrollController(
     keepScrollOffset: false,
   );
 
-  /// Deja la pista que acaba de comenzar en la parte superior de la cola.
-  /// No se ejecuta al cambiar únicamente la duración o los metadatos.
+  @override
+  void initState() {
+    super.initState();
+    _showCurrentFirst();
+  }
+
+  /// La lista conserva el orden histórico y salta a la canción actual.
+  /// El usuario puede subir manualmente para consultar las anteriores.
   void _showCurrentFirst() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
-      _scrollController.jumpTo(0);
+      final playback = ref.read(audioPlayerControllerProvider);
+      final visual = QueueVisualOrder(
+        playback.queue.length,
+        playback.currentIndex,
+      );
+      final target = visual.initialOffset(_rowHeight);
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      _scrollController.jumpTo(target.clamp(0.0, maxScroll).toDouble());
     });
   }
 
@@ -504,8 +521,10 @@ class _QueueSheetState extends ConsumerState<_QueueSheet> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<String?>(
-      audioPlayerControllerProvider.select((s) => s.currentTrack?.id),
+    ref.listen<(String?, int)>(
+      audioPlayerControllerProvider.select(
+        (s) => (s.currentTrack?.id, s.currentIndex),
+      ),
       (previous, next) {
         if (previous != next) _showCurrentFirst();
       },
@@ -517,7 +536,6 @@ class _QueueSheetState extends ConsumerState<_QueueSheet> {
     final playback = ref.watch(audioPlayerControllerProvider);
     final queue = playback.queue;
     final currentIndex = playback.currentIndex;
-    final autoRadio = playback.autoRadio;
     final visual = QueueVisualOrder(queue.length, currentIndex);
     final notifier = ref.read(audioPlayerControllerProvider.notifier);
     final scheme = Theme.of(context).colorScheme;
@@ -539,10 +557,16 @@ class _QueueSheetState extends ConsumerState<_QueueSheet> {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     Text(
-                      autoRadio
+                      playback.autoRadio
                           ? '${queue.length} en pantalla · Radio continua'
                           : '${queue.length} canciones',
                       style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      '↑ Anteriores  ·  Actual  ·  Siguientes ↓',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -557,193 +581,215 @@ class _QueueSheetState extends ConsumerState<_QueueSheet> {
         ),
         const Divider(height: 1),
         Expanded(
-          child: queue.isEmpty
-              ? const Center(child: Text('La cola está vacía'))
-              : ReorderableListView.builder(
-                  scrollController: _scrollController,
-                  buildDefaultDragHandles: false,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 8,
-                  ),
-                  itemCount: queue.length,
-                  // La reordenación afecta solamente a las próximas pistas.
-                  // La canción actual y el historial no se mueven sin reproducirlos.
-                  onReorder: (oldVisual, newVisual) {
-                    final target = visual.reorderIndices(oldVisual, newVisual);
-                    if (target == null) return;
-                    notifier.moveInQueue(target.$1, target.$2);
-                  },
-                  proxyDecorator: (child, index, animation) => Material(
-                    elevation: 8,
-                    borderRadius: BorderRadius.circular(12),
-                    color: scheme.surfaceContainerHigh,
-                    child: child,
-                  ),
-                  itemBuilder: (context, visualIndex) {
-                    final sourceIndex = visual.sourceIndex(visualIndex);
-                    final track = queue[sourceIndex];
-                    final isCurrent = sourceIndex == currentIndex;
-                    final isHistory = visual.isHistory(visualIndex);
-                    final canReorder = visualIndex > 0 && !isHistory;
-                    return Padding(
-                      key: ValueKey('${track.id}#$sourceIndex'),
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (visualIndex == 1)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.skip_next_rounded,
-                                    size: 16,
-                                    color: scheme.onSurfaceVariant,
-                                  ),
-                                  const SizedBox(width: 7),
-                                  Text(
-                                    'A continuación',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.labelMedium,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (isHistory && visualIndex == visual.nextCount)
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(8, 16, 8, 9),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.history_rounded,
-                                    size: 16,
-                                    color: scheme.onSurfaceVariant,
-                                  ),
-                                  const SizedBox(width: 7),
-                                  Text(
-                                    'Escuchadas anteriormente',
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.labelMedium,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          Material(
-                            color: isCurrent
-                                ? scheme.primaryContainer.withValues(
-                                    alpha: 0.40,
-                                  )
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(12),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: isCurrent
-                                  ? null
-                                  : () => notifier.playAt(sourceIndex),
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(3, 7, 2, 7),
-                                child: Row(
-                                  children: [
-                                    // Asa a la izquierda, antes de la portada.
-                                    if (canReorder)
-                                      ReorderableDragStartListener(
-                                        index: visualIndex,
-                                        child: const Tooltip(
-                                          message: 'Arrastrar para reordenar',
-                                          child: Padding(
-                                            padding: EdgeInsets.all(4),
-                                            child: Icon(
-                                              Icons.drag_indicator_rounded,
-                                              size: 20,
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                    else
-                                      Padding(
-                                        padding: const EdgeInsets.all(4),
-                                        child: Icon(
-                                          isCurrent
-                                              ? Icons.graphic_eq_rounded
-                                              : Icons.history_rounded,
-                                          size: 20,
-                                          color: isCurrent
-                                              ? scheme.primary
-                                              : scheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    const SizedBox(width: 3),
-                                    TrackArtwork(track: track, size: 42),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            track.title,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: isCurrent
-                                                  ? FontWeight.w700
-                                                  : FontWeight.w500,
-                                              color: isCurrent
-                                                  ? scheme.primary
-                                                  : null,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            track.displayArtist,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.labelSmall,
-                                          ),
-                                        ],
+          child: LayoutBuilder(
+            builder: (context, bounds) {
+              if (queue.isEmpty) {
+                return const Center(child: Text('La cola está vacía'));
+              }
+              // Permite llevar la última pista hasta arriba aunque no haya
+              // más canciones siguientes, sin invertir el orden de la lista.
+              final bottomSpace = (bounds.maxHeight - _rowHeight)
+                  .clamp(8.0, double.infinity)
+                  .toDouble();
+              return ReorderableListView.builder(
+                scrollController: _scrollController,
+                buildDefaultDragHandles: false,
+                itemExtent: _rowHeight,
+                padding: EdgeInsets.fromLTRB(8, 8, 8, bottomSpace),
+                itemCount: queue.length,
+                // onReorderItem recibe el índice de destino YA ajustado.
+                onReorderItem: (oldVisual, newVisual) {
+                  final action = visual.dragIntent(oldVisual, newVisual);
+                  if (action == null) return;
+                  if (action.kind == QueueDragKind.replayHistory) {
+                    unawaited(
+                      notifier.replayFromHistory(
+                        action.sourceIndex,
+                        action.targetIndex,
+                      ),
+                    );
+                  } else {
+                    unawaited(
+                      notifier.moveInQueue(
+                        action.sourceIndex,
+                        action.targetIndex,
+                      ),
+                    );
+                  }
+                },
+                proxyDecorator: (child, index, animation) => Material(
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(12),
+                  color: scheme.surfaceContainerHigh,
+                  child: child,
+                ),
+                itemBuilder: (context, visualIndex) {
+                  final sourceIndex = visual.sourceIndex(visualIndex);
+                  final track = queue[sourceIndex];
+                  final isCurrent = sourceIndex == currentIndex;
+                  final isHistory = visual.isHistory(visualIndex);
+                  final canReorder = !isCurrent;
+                  return Padding(
+                    key: ValueKey('${track.id}#$sourceIndex'),
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Material(
+                      color: isCurrent
+                          ? scheme.primaryContainer.withValues(alpha: 0.40)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: isCurrent
+                            ? null
+                            : () => notifier.playAt(sourceIndex),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(3, 7, 2, 7),
+                          child: Row(
+                            children: [
+                              // Asa a la izquierda, antes de la portada.
+                              if (canReorder)
+                                ReorderableDragStartListener(
+                                  index: visualIndex,
+                                  child: Tooltip(
+                                    message: isHistory
+                                        ? 'Arrastrar debajo de la actual para volver a escuchar'
+                                        : 'Arrastrar para reordenar las siguientes',
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(4),
+                                      child: Icon(
+                                        Icons.drag_indicator_rounded,
+                                        size: 20,
                                       ),
                                     ),
-                                    const SizedBox(width: 4),
+                                  ),
+                                )
+                              else
+                                Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Icon(
+                                    Icons.graphic_eq_rounded,
+                                    size: 20,
+                                    color: isCurrent
+                                        ? scheme.primary
+                                        : scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              const SizedBox(width: 3),
+                              TrackArtwork(track: track, size: 42),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
                                     Text(
-                                      songDurationLabel(
-                                        isCurrent
-                                            ? (track.duration ??
-                                                  playback.duration)
-                                            : track.duration,
+                                      track.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: isCurrent
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        color: isCurrent
+                                            ? scheme.primary
+                                            : null,
                                       ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      track.displayArtist,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                       style: Theme.of(
                                         context,
                                       ).textTheme.labelSmall,
                                     ),
-                                    IconButton(
-                                      tooltip: 'Quitar de la cola',
-                                      visualDensity: VisualDensity.compact,
-                                      iconSize: 17,
-                                      constraints: const BoxConstraints(
-                                        minWidth: 28,
-                                        minHeight: 36,
-                                      ),
-                                      onPressed: () =>
-                                          notifier.removeFromQueue(sourceIndex),
-                                      icon: const Icon(Icons.close_rounded),
-                                    ),
                                   ],
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 4),
+                              Text(
+                                songDurationLabel(
+                                  isCurrent
+                                      ? (track.duration ?? playback.duration)
+                                      : track.duration,
+                                ),
+                                style: Theme.of(context).textTheme.labelSmall,
+                              ),
+                              if (!isCurrent)
+                                SizedBox(
+                                  width: 28,
+                                  child: PopupMenuButton<String>(
+                                    padding: EdgeInsets.zero,
+                                    iconSize: 18,
+                                    tooltip: 'Opciones de la canción',
+                                    onSelected: (action) {
+                                      if (action == 'playNow') {
+                                        unawaited(notifier.playAt(sourceIndex));
+                                      } else if (action == 'playNext') {
+                                        if (isHistory) {
+                                          unawaited(
+                                            notifier.replayFromHistory(
+                                              sourceIndex,
+                                              currentIndex + 1,
+                                            ),
+                                          );
+                                        } else if (sourceIndex >
+                                            currentIndex + 1) {
+                                          unawaited(
+                                            notifier.moveInQueue(
+                                              sourceIndex,
+                                              currentIndex + 1,
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                    itemBuilder: (context) =>
+                                        <PopupMenuEntry<String>>[
+                                          if (!isCurrent)
+                                            const PopupMenuItem(
+                                              value: 'playNow',
+                                              child: Text('Reproducir ahora'),
+                                            ),
+                                          if (!isCurrent)
+                                            const PopupMenuItem(
+                                              value: 'playNext',
+                                              child: Text(
+                                                'Reproducir a continuación',
+                                              ),
+                                            ),
+                                        ],
+                                    icon: const Icon(Icons.more_vert_rounded),
+                                  ),
+                                )
+                              else
+                                const SizedBox(width: 28),
+                              IconButton(
+                                tooltip: isHistory
+                                    ? 'Quitar del historial visible'
+                                    : 'Quitar de la cola',
+                                visualDensity: VisualDensity.compact,
+                                iconSize: 17,
+                                constraints: const BoxConstraints(
+                                  minWidth: 28,
+                                  minHeight: 36,
+                                ),
+                                onPressed: () =>
+                                    notifier.removeFromQueue(sourceIndex),
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
       ],
     );

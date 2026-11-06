@@ -12,9 +12,14 @@ import 'package:lyra_music/features/library/presentation/controllers/music_colle
 const playbackSessionKey = 'lyra_playback_session_v1';
 
 class SavedPlaybackSession {
-  const SavedPlaybackSession({required this.queue, required this.index,
-    required this.position, required this.shuffle, required this.repeat,
-    required this.autoRadio});
+  const SavedPlaybackSession({
+    required this.queue,
+    required this.index,
+    required this.position,
+    required this.shuffle,
+    required this.repeat,
+    required this.autoRadio,
+  });
   final List<Track> queue;
   final int index;
   final Duration position;
@@ -25,8 +30,11 @@ class SavedPlaybackSession {
   Map<String, Object?> toMap() => {
     'version': 1,
     'queue': queue.map((t) => persistentTrack(t).toMap()).toList(),
-    'index': index, 'positionMs': position.inMilliseconds,
-    'shuffle': shuffle, 'repeat': repeat, 'autoRadio': autoRadio,
+    'index': index,
+    'positionMs': position.inMilliseconds,
+    'shuffle': shuffle,
+    'repeat': repeat,
+    'autoRadio': autoRadio,
   };
 
   factory SavedPlaybackSession.fromMap(Map<String, dynamic> map) {
@@ -35,15 +43,20 @@ class SavedPlaybackSession {
       try {
         if (item is Map) {
           final track = Track.fromMap(Map<String, dynamic>.from(item));
-          if (track.id.trim().isNotEmpty && track.title.trim().isNotEmpty &&
+          if (track.id.trim().isNotEmpty &&
+              track.title.trim().isNotEmpty &&
               (track.id.startsWith('ytmusic:') || track.filePath.isNotEmpty)) {
             queue.add(track);
           }
         }
-      } catch (_) { /* Saltar registros dañados. */ }
+      } catch (_) {
+        /* Saltar registros dañados. */
+      }
     }
     final requestedIndex = (map['index'] as num?)?.toInt() ?? 0;
-    final index = queue.isEmpty ? -1 : requestedIndex.clamp(0, queue.length - 1);
+    final index = queue.isEmpty
+        ? -1
+        : requestedIndex.clamp(0, queue.length - 1);
     final milliseconds = (map['positionMs'] as num?)?.toInt() ?? 0;
     var safePosition = Duration(milliseconds: milliseconds.clamp(0, 86400000));
     // No reanudar encima del final de una canción ya terminada: evitar un
@@ -56,7 +69,8 @@ class SavedPlaybackSession {
       }
     }
     return SavedPlaybackSession(
-      queue: queue, index: index,
+      queue: queue,
+      index: index,
       position: safePosition,
       shuffle: map['shuffle'] == true,
       repeat: (map['repeat'] as num?)?.toInt() ?? 0,

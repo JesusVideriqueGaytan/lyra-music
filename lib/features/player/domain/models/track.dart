@@ -49,10 +49,8 @@ class Track {
 
   /// Etiqueta segura para pistas guardadas con metadatos incompletos.
   /// En resultados antiguos una duración (p.ej. 2:54) quedó como artista.
-  String get displayArtist => isUsableArtistName(artist)
-      ? artist.trim()
-      : 'Artista desconocido';
-
+  String get displayArtist =>
+      isUsableArtistName(artist) ? artist.trim() : 'Artista desconocido';
 
   /// Álbum conocido o "Álbum desconocido".
   final String album;
@@ -108,8 +106,9 @@ class Track {
   factory Track.fromFilePath(String path) {
     final fileName = path.split(Platform.pathSeparator).last;
     final dotIndex = fileName.lastIndexOf('.');
-    final cleanTitle =
-        dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+    final cleanTitle = dotIndex > 0
+        ? fileName.substring(0, dotIndex)
+        : fileName;
 
     // Convención habitual "Artist - Title.mp3": si el nombre contiene " - "
     // lo interpretamos como artista + título para mejorar la UI sin leer

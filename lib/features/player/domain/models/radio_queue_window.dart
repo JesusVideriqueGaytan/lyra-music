@@ -1,5 +1,5 @@
 /// Pure, testable sliding window for online radio.
-/// Holds the last 10 tracks including the active track, plus 20 upcoming.
+/// Holds up to ten previous tracks, the active track, plus 20 upcoming.
 library;
 
 import 'dart:math' as math;
@@ -14,7 +14,7 @@ class RadioWindowSnapshot {
 
 class RadioQueueWindow {
   const RadioQueueWindow({
-    this.previousIncludingCurrent = 10,
+    this.previousIncludingCurrent = 11,
     this.upcoming = 20,
   });
   final int previousIncludingCurrent;
@@ -33,6 +33,7 @@ class RadioQueueWindow {
     List<Track> pending, {
     List<Track>? recent,
     Set<String>? playedIds,
+    Map<String, int>? manualReplayCounts,
   }) {
     if (queue.isEmpty || currentIndex < 0 || currentIndex >= queue.length) {
       return RadioWindowSnapshot(
@@ -54,35 +55,61 @@ class RadioQueueWindow {
       return RadioWindowSnapshot(visible, active, waiting);
     }
     final current = queue[currentIndex];
-    final chronological = <Track>[
-      ...recent.where((track) => track.id != current.id),
-      current,
+    // La secuencia [recent] representa el orden CRONOLÓGICO de la escucha.
+    // Al retroceder, la pista actual puede estar en medio del historial:
+    // nunca la reubiques al final, pues entonces Anterior alterna A/B.
+    final matching = <int>[
+      for (var i = 0; i < recent.length; i++)
+        if (recent[i].id == current.id) i,
     ];
-    final keptHistory = chronological.length <= previousIncludingCurrent
-        ? chronological
-        : chronological.sublist(
-            chronological.length - previousIncludingCurrent,
-          );
-    final knownPlayed = <String>{
-      ...?playedIds,
-      ...keptHistory.map((e) => e.id),
-    };
-    final orderedFuture = <Track>[
-      ...queue.skip(currentIndex + 1),
-      // Songs skipped with a jump should not be labeled as "heard".
-      ...queue.take(currentIndex),
-      ...pending,
-    ];
-    final seen = <String>{...keptHistory.map((e) => e.id)};
-    final unplayedFuture = <Track>[
-      for (final song in orderedFuture)
-        if (!knownPlayed.contains(song.id) && seen.add(song.id)) song,
-    ];
-    final visible = <Track>[...keptHistory, ...unplayedFuture.take(upcoming)];
+    // Si una canción se programó por segunda vez, puede estar dos veces en
+    // el historial. Distinguir la primera reproducción de la repetición por
+    // el número de ocurrencias presentes antes del cursor de la cola.
+    final visibleOccurrences = queue
+        .take(currentIndex + 1)
+        .where((track) => track.id == current.id)
+        .length;
+    final cursorInHistory = matching.isEmpty
+        ? -1
+        : matching[(visibleOccurrences - 1).clamp(0, matching.length - 1)];
+    final chronological = cursorInHistory >= 0
+        ? List<Track>.of(recent)
+        : <Track>[...recent, current];
+    final cursor = cursorInHistory >= 0
+        ? cursorInHistory
+        : chronological.length - 1;
+    final historyStart = math.max(0, cursor - previousIncludingCurrent + 1);
+    final history = chronological.sublist(historyStart, cursor + 1);
+
+    // Las pistas escuchadas DESPUÉS del cursor (al navegar hacia atrás)
+    // continúan por delante, en lugar de descartarse como duplicados.
+    final forwardHistory = chronological.skip(cursor + 1).toList();
+    // Si saltamos de la canción 2 a la 5, las canciones 3 y 4 NO vuelven a
+    // insertarse tras la 5. Solo quedan las que siguen realmente después del
+    // nuevo cursor y las recomendaciones que aún están pendientes.
+    final proposals = <Track>[...queue.skip(currentIndex + 1), ...pending];
+    final seen = <String>{...history.map((track) => track.id)};
+    final future = <Track>[...forwardHistory];
+    seen.addAll(forwardHistory.map((track) => track.id));
+
+    // Única excepción a la deduplicación: el usuario pidió explícitamente
+    // volver a escuchar una canción pasada arrastrándola a las siguientes.
+    final replays = <String, int>{...?manualReplayCounts};
+    for (final track in proposals) {
+      final remaining = replays[track.id] ?? 0;
+      if (remaining > 0) {
+        replays[track.id] = remaining - 1;
+        future.add(track);
+        continue;
+      }
+      if (playedIds?.contains(track.id) == true) continue;
+      if (seen.add(track.id)) future.add(track);
+    }
+    final visible = <Track>[...history, ...future.take(upcoming)];
     return RadioWindowSnapshot(
       visible,
-      keptHistory.length - 1,
-      unplayedFuture.skip(upcoming).toList(),
+      history.length - 1,
+      future.skip(upcoming).toList(),
     );
   }
 
